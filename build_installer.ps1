@@ -94,7 +94,16 @@ if (-not (Test-Path "$runtimePath\bin\java.exe")) {
 # --- 5. Run Launch4j ---
 Write-Host "5. Wrapping JAR with Launch4j..."
 $launch4jConfig = "$PWD\installer_config\launch4j.xml"
-& $launch4jPath $launch4jConfig
+
+# Try to run Launch4j using java -jar if possible (avoids JRE detection issues with launch4jc.exe)
+$launch4jJar = Join-Path (Split-Path $launch4jPath -Parent) "launch4j.jar"
+if (Test-Path $launch4jJar) {
+    Write-Host "Using Launch4j JAR: $launch4jJar"
+    java -jar $launch4jJar $launch4jConfig
+} else {
+    Write-Host "Using Launch4j Executable: $launch4jPath"
+    & $launch4jPath $launch4jConfig
+}
 
 if (-not (Test-Path "$appDir\LambdaNotes.exe")) {
     Write-Error "Launch4j failed to create executable!"
