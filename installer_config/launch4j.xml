@@ -1,0 +1,37 @@
+<launch4jConfig>
+  <dontWrapJar>true</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>app/lambdanotes-1.0-SNAPSHOT.jar</jar>
+  <outfile>../installer_output/LambdaNotes/LambdaNotes.exe</outfile>
+  <errTitle>LambdaNotes Error</errTitle>
+  <cmdLine></cmdLine>
+  <chdir>.</chdir>
+  <priority>normal</priority>
+  <downloadUrl>https://java.com/download</downloadUrl>
+  <supportUrl></supportUrl>
+  <stayAlive>false</stayAlive>
+  <restartOnCrash>false</restartOnCrash>
+  <manifest></manifest>
+  <icon>../lambda_note.ico</icon>
+  <versionInfo>
+    <fileVersion>1.0.0.0</fileVersion>
+    <txtFileVersion>1.0.0.0</txtFileVersion>
+    <fileDescription>LambdaNotes Application</fileDescription>
+    <copyright>Copyright (C) 2025 UISAP</copyright>
+    <productVersion>1.0.0.0</productVersion>
+    <txtProductVersion>1.0.0.0</txtProductVersion>
+    <productName>LambdaNotes</productName>
+    <companyName>UISAP</companyName>
+    <internalName>LambdaNotes</internalName>
+    <originalFilename>LambdaNotes.exe</originalFilename>
+  </versionInfo>
+  <jre>
+    <path>runtime</path>
+    <bundledJre64Bit>false</bundledJre64Bit>
+    <bundledJreAsFallback>false</bundledJreAsFallback>
+    <minVersion></minVersion>
+    <maxVersion></maxVersion>
+    <jdkPreference>preferJre</jdkPreference>
+    <runtimeBits>64/32</runtimeBits>
+  </jre>
+</launch4jConfig>

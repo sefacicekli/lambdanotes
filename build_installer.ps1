@@ -1,105 +1,117 @@
-# Build Script for LambdaNotes Installer
+# Build Script for LambdaNotes Installer (Launch4j + Inno Setup)
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "1. Building Go Backend..."
-Set-Location backend
-go build -o backend.exe main.go
+# --- Configuration ---
+$launch4jPath = "C:\Program Files (x86)\Launch4j\launch4jc.exe"
+$innoSetupPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+$outputDir = "installer_output"
+$appDir = "$outputDir\LambdaNotes"
+
+# --- Check Tools ---
+if (-not (Test-Path $launch4jPath)) {
+    Write-Warning "Launch4j not found at default location: $launch4jPath"
+    if (Get-Command launch4jc.exe -ErrorAction SilentlyContinue) {
+        $launch4jPath = "launch4jc.exe"
+        Write-Host "Found Launch4j in PATH."
+    } else {
+        Write-Error "Launch4j is required but not found. Please install it or update the path in the script."
+        exit 1
+    }
+}
+
+if (-not (Test-Path $innoSetupPath)) {
+    Write-Warning "Inno Setup not found at default location: $innoSetupPath"
+    if (Get-Command ISCC.exe -ErrorAction SilentlyContinue) {
+        $innoSetupPath = "ISCC.exe"
+        Write-Host "Found Inno Setup in PATH."
+    } else {
+        Write-Error "Inno Setup is required but not found. Please install it or update the path in the script."
+        exit 1
+    }
+}
+
+# --- 1. Clean & Prepare ---
+Write-Host "1. Cleaning previous builds..."
+if (Test-Path $outputDir) {
+    Remove-Item -Recurse -Force $outputDir
+}
+New-Item -ItemType Directory -Path $appDir | Out-Null
+New-Item -ItemType Directory -Path "$appDir\app" | Out-Null
+New-Item -ItemType Directory -Path "$appDir\backend" | Out-Null
+
+# --- 2. Build Backend ---
+Write-Host "2. Building Go Backend..."
+Push-Location backend
+go build -ldflags -H=windowsgui -o backend.exe main.go
 if (-not (Test-Path "backend.exe")) {
     Write-Error "Go build failed!"
     exit 1
 }
-Set-Location ..
+Copy-Item "backend.exe" -Destination "..\$appDir\backend\"
+Pop-Location
 
-Write-Host "2. Building Java Frontend..."
-Set-Location frontend
+# --- 3. Build Frontend ---
+Write-Host "3. Building Java Frontend..."
+Push-Location frontend
 mvn clean package
 if (-not (Test-Path "target/lambdanotes-1.0-SNAPSHOT.jar")) {
     Write-Error "Maven build failed!"
     exit 1
 }
-Set-Location ..
+Copy-Item "target/lambdanotes-1.0-SNAPSHOT.jar" -Destination "..\$appDir\app\"
+Pop-Location
 
-Write-Host "3. Preparing Input Directory..."
-$inputDir = "installer_input"
-if (Test-Path $inputDir) {
-    Remove-Item -Recurse -Force $inputDir
-}
-New-Item -ItemType Directory -Path $inputDir | Out-Null
+# --- 4. Create Runtime (jlink) ---
+Write-Host "4. Creating Custom Runtime (jlink)..."
+# Modules required for a typical JavaFX app (even if shaded, we need the base platform)
+$modules = "java.base,java.desktop,java.logging,java.scripting,java.xml,jdk.jsobject,jdk.unsupported,jdk.xml.dom,java.net.http,java.datatransfer,java.prefs"
 
-# Copy files
-Copy-Item "backend/backend.exe" -Destination $inputDir
-Copy-Item "frontend/target/lambdanotes-1.0-SNAPSHOT.jar" -Destination $inputDir
-
-Write-Host "4. Running jpackage..."
-# Ensure jpackage is available
-$jpackage = "jpackage"
-if (-not (Get-Command jpackage -ErrorAction SilentlyContinue)) {
-    # Try to find it in known locations
+# Find jlink
+$jlink = "jlink"
+if (-not (Get-Command jlink -ErrorAction SilentlyContinue)) {
     $possiblePaths = @(
-        "C:\Program Files\Java\jdk-25\bin\jpackage.exe",
-        "$env:JAVA_HOME\bin\jpackage.exe"
+        "$env:JAVA_HOME\bin\jlink.exe",
+        "C:\Program Files\Java\jdk-25\bin\jlink.exe",
+        "C:\Program Files\Java\jdk-21\bin\jlink.exe"
     )
-    
-    foreach ($path in $possiblePaths) {
-        if (Test-Path $path) {
-            $jpackage = $path
+    foreach ($p in $possiblePaths) {
+        if (Test-Path $p) {
+            $jlink = $p
             break
         }
     }
-    
-    if (-not (Get-Command $jpackage -ErrorAction SilentlyContinue) -and -not (Test-Path $jpackage)) {
-        Write-Error "jpackage not found! Please ensure JDK 14+ is installed and in PATH."
-        exit 1
-    }
 }
 
-Write-Host "Using jpackage: $jpackage"
+$runtimePath = "$appDir\runtime"
+& $jlink --add-modules $modules --output $runtimePath --strip-debug --no-man-pages --no-header-files --compress=2
 
-# Create output directory
-$outputDir = "installer_output"
-if (Test-Path $outputDir) {
-    Remove-Item -Recurse -Force $outputDir
+if (-not (Test-Path "$runtimePath\bin\java.exe")) {
+    Write-Error "Failed to create runtime!"
+    exit 1
 }
-New-Item -ItemType Directory -Path $outputDir | Out-Null
 
-# Check for WiX Toolset
-$type = "app-image"
-$wixPath = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
-if (Get-Command light -ErrorAction SilentlyContinue) {
-    Write-Host "WiX Toolset detected in PATH. Building MSI installer..."
-    $type = "msi"
-} elseif (Test-Path $wixPath) {
-    Write-Host "WiX Toolset detected at $wixPath. Adding to PATH..."
-    $env:PATH += ";$wixPath"
-    $type = "msi"
+# --- 5. Run Launch4j ---
+Write-Host "5. Wrapping JAR with Launch4j..."
+$launch4jConfig = "$PWD\installer_config\launch4j.xml"
+& $launch4jPath $launch4jConfig
+
+if (-not (Test-Path "$appDir\LambdaNotes.exe")) {
+    Write-Error "Launch4j failed to create executable!"
+    exit 1
+}
+
+# --- 6. Run Inno Setup ---
+Write-Host "6. Creating Installer with Inno Setup..."
+$issFile = "$PWD\installer_config\setup.iss"
+& $innoSetupPath $issFile
+
+if (Test-Path "$outputDir\LambdaNotes_Setup.exe") {
+    Write-Host "---------------------------------------------------"
+    Write-Host "SUCCESS! Installer created at: $outputDir\LambdaNotes_Setup.exe"
+    Write-Host "Portable version available at: $appDir"
+    Write-Host "---------------------------------------------------"
 } else {
-    Write-Host "WiX Toolset NOT detected. Building portable App Image only."
-    Write-Host "To build an MSI/EXE installer, please install WiX Toolset v3: https://wixtoolset.org/releases/"
-}
-
-# Run jpackage
-$jpackageArgs = @(
-  "--name", "LambdaNotes",
-  "--input", $inputDir,
-  "--main-jar", "lambdanotes-1.0-SNAPSHOT.jar",
-  "--main-class", "com.lambdanotes.Launcher",
-  "--type", $type,
-  "--dest", $outputDir,
-  "--app-version", "1.0.0"
-)
-
-if ($type -ne "app-image") {
-    $jpackageArgs += "--win-menu"
-    $jpackageArgs += "--win-shortcut"
-}
-
-& $jpackage @jpackageArgs
-
-Write-Host "Build Complete!"
-if ($type -eq "app-image") {
-    Write-Host "App Image is located in: $outputDir/LambdaNotes"
-    Write-Host "You can run it via LambdaNotes.exe inside that folder."
-} else {
-    Write-Host "Installer is located in: $outputDir"
+    Write-Error "Inno Setup failed to create installer."
+    exit 1
 }

@@ -204,6 +204,14 @@ public class App extends Application {
         scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
         
         stage.setTitle("LambdaNotes");
+        
+        // Set Application Icon
+        try {
+            stage.getIcons().add(new javafx.scene.image.Image(getClass().getResourceAsStream("lambda_note.png")));
+        } catch (Exception e) {
+            System.err.println("Icon could not be loaded: " + e.getMessage());
+        }
+
         stage.setScene(scene);
         
         // Resize Logic

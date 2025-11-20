@@ -30,43 +30,34 @@ jobs:
         go-version: '1.21'
         # cache: true # Enable if go.sum exists
 
-    - name: Build Backend
-      working-directory: ./backend
-      run: go build -o backend.exe main.go
-
-    - name: Build Frontend
-      working-directory: ./frontend
-      run: mvn clean package -DskipTests
-
-    - name: Prepare Input Directory
+    - name: Install Build Tools
       run: |
-        New-Item -ItemType Directory -Path installer_input -Force
-        Copy-Item backend/backend.exe -Destination installer_input/
-        Copy-Item frontend/target/lambdanotes-1.0-SNAPSHOT.jar -Destination installer_input/
+        choco install launch4j
+        choco install innosetup
 
-    - name: Run jpackage (Create App Image)
-      run: |
-        jpackage `
-          --name "LambdaNotes" `
-          --input installer_input `
-          --main-jar "lambdanotes-1.0-SNAPSHOT.jar" `
-          --main-class "com.lambdanotes.Launcher" `
-          --type app-image `
-          --dest installer_output `
-          --app-version "1.0.0"
+    - name: Build Application (Installer & Portable)
+      run: .\build_installer.ps1
 
     - name: Create Portable ZIP
       run: |
         Compress-Archive -Path installer_output/LambdaNotes -DestinationPath LambdaNotes-Portable.zip
 
-    - name: Upload Build Artifact
+    - name: Upload Portable Artifact
       uses: actions/upload-artifact@v4
       with:
         name: LambdaNotes-Portable
         path: LambdaNotes-Portable.zip
 
-    - name: Upload Release Asset
+    - name: Upload Installer Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: LambdaNotes-Setup
+        path: installer_output/LambdaNotes_Setup.exe
+
+    - name: Upload Release Assets
       if: github.event_name == 'release'
       uses: softprops/action-gh-release@v1
       with:
-        files: LambdaNotes-Portable.zip
+        files: |
+          LambdaNotes-Portable.zip
+          installer_output/LambdaNotes_Setup.exe
