@@ -10,6 +10,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -70,6 +71,9 @@ public class App extends Application {
     private Label viewModeLabel; // New label for footer
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
+    
+    private double currentEditorFontSize = 16;
+    private static final double MAX_CONTENT_WIDTH = 900;
     
     // Layout Components
     private BorderPane mainLayout;
@@ -140,13 +144,7 @@ public class App extends Application {
         // Custom Window Title Bar
         HBox titleBar = createTitleBar(stage);
         
-        // Toolbar
-        HBox toolBar = createToolBar();
-        
-        // Top Container (TitleBar + ToolBar)
-        VBox topContainer = new VBox(titleBar, toolBar);
-        topContainer.getStyleClass().add("top-shell");
-        mainLayout.setTop(topContainer);
+        mainLayout.setTop(titleBar);
 
         // Sidebar (Note Tree)
         noteTreeView = new TreeView<>();
@@ -228,6 +226,23 @@ public class App extends Application {
         titleField.setAlignment(Pos.CENTER_LEFT);
         titleField.getStyleClass().add("title-field");
 
+        // Header Pane (Title + Mode Switcher)
+        AnchorPane headerPane = new AnchorPane();
+        
+        HBox modeSwitch = createModeSwitcher();
+        
+        // Title Field fills the header
+        AnchorPane.setLeftAnchor(titleField, 0.0);
+        AnchorPane.setRightAnchor(titleField, 0.0);
+        AnchorPane.setTopAnchor(titleField, 0.0);
+        AnchorPane.setBottomAnchor(titleField, 0.0);
+        
+        // Mode Switcher at Top Right
+        AnchorPane.setRightAnchor(modeSwitch, 10.0);
+        AnchorPane.setTopAnchor(modeSwitch, 10.0);
+
+        headerPane.getChildren().addAll(titleField, modeSwitch);
+
         splitPane = new SplitPane();
         splitPane.getStyleClass().add("main-split-pane");
         
@@ -244,7 +259,12 @@ public class App extends Application {
         // Editor Context Menu
         setupEditorContextMenu();
 
+        // Layout Listeners for Centering
+        editorArea.widthProperty().addListener((obs, oldVal, newVal) -> updateEditorStyle());
+        titleField.widthProperty().addListener((obs, oldVal, newVal) -> updateTitleStyle());
+
         previewArea = new WebView();
+        previewArea.setPageFill(Color.TRANSPARENT);
         previewArea.setContextMenuEnabled(false);
 
         editorPanel = createEditorPanel();
@@ -254,7 +274,7 @@ public class App extends Application {
         splitPane.getItems().add(editorPanel);
         VBox.setVgrow(splitPane, Priority.ALWAYS);
 
-        mainContent.getChildren().addAll(titleField, splitPane);
+        mainContent.getChildren().addAll(headerPane, splitPane);
         
         // Empty State
         emptyState = new StackPane();
@@ -293,7 +313,19 @@ public class App extends Application {
         stage.show();
 
         // Give backend a moment to start
-        new PauseTransition(Duration.seconds(1)).setOnFinished(e -> refreshNoteList());
+        new PauseTransition(Duration.seconds(1)).setOnFinished(e -> {
+            noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
+                applySettings(config);
+                if (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) {
+                    syncNotes(); // Auto-sync on startup
+                } else {
+                    refreshNoteList();
+                }
+            })).exceptionally(ex -> {
+                Platform.runLater(() -> refreshNoteList());
+                return null;
+            });
+        });
         
         // Default to Reading Mode
         setViewMode(ViewMode.READING);
@@ -326,7 +358,13 @@ public class App extends Application {
         UpdateChecker checker = new UpdateChecker();
         checker.checkForUpdates(APP_VERSION).thenAccept(updateInfo -> {
             if (updateInfo != null) {
-                Platform.runLater(() -> showNotification("Yeni Güncelleme: " + updateInfo.version, updateInfo.url));
+                Platform.runLater(() -> showNotification(
+                    "Güncelleme Mevcut", 
+                    "Yeni sürüm (" + updateInfo.version + ") indirilebilir.", 
+                    NotificationType.INFO, 
+                    "İndir", 
+                    () -> getHostServices().showDocument(updateInfo.url)
+                ));
             }
         });
     }
@@ -368,6 +406,14 @@ public class App extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        Button btnSync = new Button("Sync");
+        btnSync.setOnAction(e -> syncNotes());
+        btnSync.getStyleClass().add("window-button");
+
+        Button btnSettings = new Button("Settings");
+        btnSettings.setOnAction(e -> openSettings());
+        btnSettings.getStyleClass().add("window-button");
+
         Button btnMinimize = new Button("—");
         btnMinimize.getStyleClass().add("window-button");
         btnMinimize.setOnAction(e -> stage.setIconified(true));
@@ -380,7 +426,7 @@ public class App extends Application {
         btnClose.getStyleClass().add("window-button-close");
         btnClose.setOnAction(e -> stage.close());
 
-        titleBar.getChildren().addAll(titleLabel, spacer, btnMinimize, btnMaximize, btnClose);
+        titleBar.getChildren().addAll(titleLabel, spacer, btnSync, btnSettings, btnMinimize, btnMaximize, btnClose);
 
         // Drag Window Logic
         final double[] xOffset = {0};
@@ -485,29 +531,6 @@ public class App extends Application {
         updateModeSwitcherState();
         
         return modeSwitcher;
-    }
-
-    private HBox createToolBar() {
-        // Spacer
-        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        HBox modeSwitch = createModeSwitcher();
-
-        Button btnSync = new Button("Senkronize Et");
-        btnSync.setOnAction(e -> syncNotes());
-        styleButton(btnSync, "btn-toolbar");
-
-        Button btnSettings = new Button("Ayarlar");
-        btnSettings.setOnAction(e -> openSettings());
-        styleButton(btnSettings, "btn-toolbar");
-
-        HBox toolbar = new HBox(15);
-        toolbar.getStyleClass().add("tool-bar-container");
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-        
-        toolbar.getChildren().addAll(modeSwitch, spacer, btnSync, btnSettings);
-        return toolbar;
     }
 
     private void setupEditorContextMenu() {
@@ -727,6 +750,7 @@ public class App extends Application {
 
             result.ifPresent(newConfig -> {
                 noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
+                    applySettings(newConfig);
                     showAlert("Başarılı", "Ayarlar kaydedildi ve Git yapılandırıldı.");
                 })).exceptionally(e -> {
                     Platform.runLater(() -> showAlert("Hata", "Ayarlar kaydedilemedi: " + e.getMessage()));
@@ -737,12 +761,42 @@ public class App extends Application {
             // Config çekilemezse boş aç
             Platform.runLater(() -> {
                 SettingsDialog dialog = new SettingsDialog(noteService, null);
-                dialog.showAndWaitResult();
+                Optional<AppConfig> result = dialog.showAndWaitResult();
+                result.ifPresent(newConfig -> {
+                     noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> applySettings(newConfig)));
+                });
             });
             return null;
         });
     }
 
+    private void applySettings(AppConfig config) {
+        if (config == null) return;
+        if (editorArea != null) {
+            currentEditorFontSize = config.getEditorFontSize();
+            updateEditorStyle();
+        }
+    }
+
+    private void updateEditorStyle() {
+        if (editorArea == null) return;
+        double width = editorArea.getWidth();
+        double hPadding = 20;
+        if (width > MAX_CONTENT_WIDTH) {
+            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        }
+        editorArea.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+    }
+
+    private void updateTitleStyle() {
+        if (titleField == null) return;
+        double width = titleField.getWidth();
+        double hPadding = 0;
+        if (width > MAX_CONTENT_WIDTH) {
+            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        }
+        titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+    }
 
     private void updatePreview(String markdown) {
         String html = renderer.render(parser.parse(markdown));
@@ -753,7 +807,7 @@ public class App extends Application {
         String styledHtml = "<html><head>" +
                 "<style>" +
                 "@font-face { font-family: 'Roboto'; src: url('" + fontUrl + "'); }" +
-                "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: #282c34; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
                 "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: #abb2bf; font-weight: bold; }" +
@@ -769,7 +823,7 @@ public class App extends Application {
                 "img { max-width: 100%; border-radius: 5px; }" +
                 "ul, ol { padding-left: 20px; }" +
                 "li { margin-bottom: 5px; }" +
-                "</style></head><body>" + html + "</body></html>";
+                "</style></head><body style='background-color: transparent;'>" + html + "</body></html>";
         previewArea.getEngine().loadContent(styledHtml);
         updatePreviewStatus();
     }
@@ -853,20 +907,66 @@ public class App extends Application {
         return statusBar;
     }
 
-    private void showNotification(String title, String url) {
-        VBox notification = new VBox(5);
+    private enum NotificationType {
+        INFO, SUCCESS, WARNING, ERROR
+    }
+
+    private void showNotification(String title, String message, NotificationType type, String actionText, Runnable action) {
+        HBox notification = new HBox(0);
         notification.getStyleClass().add("notification-popup");
-        notification.setMaxSize(300, 100);
-        notification.setAlignment(Pos.CENTER_LEFT);
+        notification.setMaxHeight(Region.USE_PREF_SIZE); // Prevent vertical stretching
+        
+        // Accent Bar
+        Region accent = new Region();
+        accent.getStyleClass().add("notification-accent");
+        switch (type) {
+            case INFO: accent.getStyleClass().add("notification-accent-info"); break;
+            case SUCCESS: accent.getStyleClass().add("notification-accent-success"); break;
+            case WARNING: accent.getStyleClass().add("notification-accent-warning"); break;
+            case ERROR: accent.getStyleClass().add("notification-accent-error"); break;
+        }
+        
+        // Content Container
+        VBox contentBox = new VBox(5);
+        contentBox.getStyleClass().add("notification-content");
+        HBox.setHgrow(contentBox, Priority.ALWAYS);
+        
+        // Header
+        HBox header = new HBox(10);
+        header.getStyleClass().add("notification-header");
+        header.setAlignment(Pos.CENTER_LEFT);
         
         Label titleLabel = new Label(title);
-        titleLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: white;");
+        titleLabel.getStyleClass().add("notification-title");
         
-        Hyperlink repoLink = new Hyperlink("GitHub Reposunu Aç");
-        repoLink.setOnAction(e -> getHostServices().showDocument(url));
-        repoLink.setStyle("-fx-text-fill: #61afef; -fx-border-color: transparent;");
-
-        notification.getChildren().addAll(titleLabel, repoLink);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        
+        Button closeBtn = new Button("✕");
+        closeBtn.getStyleClass().add("notification-close-button");
+        closeBtn.setOnAction(e -> rootStack.getChildren().remove(notification));
+        
+        header.getChildren().addAll(titleLabel, spacer, closeBtn);
+        
+        // Message
+        Label messageLabel = new Label(message);
+        messageLabel.getStyleClass().add("notification-message");
+        messageLabel.setWrapText(true);
+        
+        contentBox.getChildren().addAll(header, messageLabel);
+        
+        // Action Link
+        if (actionText != null && action != null) {
+            Hyperlink actionLink = new Hyperlink(actionText);
+            actionLink.getStyleClass().add("notification-action-link");
+            actionLink.setOnAction(e -> {
+                action.run();
+                rootStack.getChildren().remove(notification);
+            });
+            contentBox.getChildren().add(actionLink);
+        }
+        
+        notification.getChildren().addAll(accent, contentBox);
 
         // Position bottom-right
         StackPane.setAlignment(notification, Pos.BOTTOM_RIGHT);
@@ -882,11 +982,13 @@ public class App extends Application {
         FadeTransition fadeOut = new FadeTransition(Duration.millis(500), notification);
         fadeOut.setFromValue(1);
         fadeOut.setToValue(0);
-        fadeOut.setDelay(Duration.seconds(5));
+        fadeOut.setDelay(Duration.seconds(3));
         fadeOut.setOnFinished(e -> rootStack.getChildren().remove(notification));
 
         fadeIn.play();
-        fadeIn.setOnFinished(e -> fadeOut.play());
+        // Stop fade out on hover
+        notification.setOnMouseEntered(e -> fadeOut.stop());
+        notification.setOnMouseExited(e -> fadeOut.playFromStart());
     }
 
     private void syncNotes() {
@@ -915,7 +1017,13 @@ public class App extends Application {
                 statusLabel.setText("Hazır");
                 syncSpinner.setVisible(false);
                 rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                showNotification("Senkronizasyon Tamamlandı", repoUrl);
+                showNotification(
+                    "Senkronizasyon Başarılı", 
+                    "Notlar başarıyla senkronize edildi.", 
+                    NotificationType.SUCCESS, 
+                    "Repo'yu Aç", 
+                    () -> getHostServices().showDocument(repoUrl)
+                );
                 logger.info("Sync completed successfully.");
             })).exceptionally(e -> {
                 Platform.runLater(() -> {
@@ -935,7 +1043,13 @@ public class App extends Application {
                     statusLabel.setText("Hazır");
                     syncSpinner.setVisible(false);
                     rootStack.getChildren().remove(loadingOverlay);
-                    showNotification("Senkronizasyon Tamamlandı", "https://github.com");
+                    showNotification(
+                        "Senkronizasyon Başarılı", 
+                        "Notlar başarıyla senkronize edildi.", 
+                        NotificationType.SUCCESS, 
+                        "GitHub'ı Aç", 
+                        () -> getHostServices().showDocument("https://github.com")
+                    );
                     logger.info("Sync completed successfully (config fetch failed).");
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {

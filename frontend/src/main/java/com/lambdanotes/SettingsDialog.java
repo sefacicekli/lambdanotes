@@ -36,6 +36,14 @@ public class SettingsDialog extends Stage {
     private GitHubUser currentUser;
     private Label connectedUserLabel;
 
+    // Editor Settings Components
+    private Slider fontSizeSlider;
+    private Label fontSizeValueLabel;
+
+    // Views Cache
+    private VBox githubView;
+    private VBox editorView;
+
     public SettingsDialog(NoteService noteService, AppConfig currentConfig) {
         this.noteService = noteService;
         this.currentConfig = currentConfig;
@@ -50,7 +58,7 @@ public class SettingsDialog extends Stage {
         // Sidebar
         categoryList = new ListView<>();
         categoryList.getStyleClass().add("settings-sidebar");
-        categoryList.getItems().addAll("Genel", "Görünüm", "GitHub", "Hakkında");
+        categoryList.getItems().addAll("Genel", "Görünüm", "Editör", "GitHub", "Hakkında");
         categoryList.getSelectionModel().select("GitHub"); // Default selection
         categoryList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) switchView(newVal);
@@ -60,6 +68,10 @@ public class SettingsDialog extends Stage {
         contentArea = new StackPane();
         contentArea.getStyleClass().add("settings-content");
         
+        // Pre-create views to preserve state
+        githubView = createGitHubSettingsView();
+        editorView = createEditorSettingsView();
+
         // Initial View
         switchView("GitHub");
 
@@ -92,7 +104,10 @@ public class SettingsDialog extends Stage {
         contentArea.getChildren().clear();
         switch (category) {
             case "GitHub":
-                contentArea.getChildren().add(createGitHubSettingsView());
+                contentArea.getChildren().add(githubView);
+                break;
+            case "Editör":
+                contentArea.getChildren().add(editorView);
                 break;
             case "Genel":
             case "Görünüm":
@@ -103,6 +118,49 @@ public class SettingsDialog extends Stage {
                 break;
         }
     }
+
+
+    private VBox createEditorSettingsView() {
+        VBox view = new VBox(20);
+        view.setAlignment(Pos.TOP_LEFT);
+
+        Label header = new Label("Editör Ayarları");
+        header.getStyleClass().add("settings-header-label");
+
+        // Font Size Section
+        VBox fontSection = new VBox(10);
+        Label fontLabel = new Label("Yazı Boyutu");
+        fontLabel.getStyleClass().add("settings-section-label");
+
+        HBox sliderBox = new HBox(15);
+        sliderBox.setAlignment(Pos.CENTER_LEFT);
+
+        fontSizeSlider = new Slider(10, 30, 14);
+        if (currentConfig != null) {
+            fontSizeSlider.setValue(currentConfig.getEditorFontSize());
+        } else {
+            fontSizeSlider.setValue(16); // Default if no config
+        }
+        fontSizeSlider.setShowTickMarks(true);
+        fontSizeSlider.setShowTickLabels(true);
+        fontSizeSlider.setMajorTickUnit(2);
+        fontSizeSlider.setBlockIncrement(1);
+        fontSizeSlider.setPrefWidth(300);
+
+        fontSizeValueLabel = new Label((int) fontSizeSlider.getValue() + "px");
+        fontSizeValueLabel.setStyle("-fx-text-fill: #dfe1e5; -fx-font-weight: bold;");
+
+        fontSizeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            fontSizeValueLabel.setText(newVal.intValue() + "px");
+        });
+
+        sliderBox.getChildren().addAll(fontSizeSlider, fontSizeValueLabel);
+        fontSection.getChildren().addAll(fontLabel, sliderBox);
+
+        view.getChildren().addAll(header, fontSection);
+        return view;
+    }
+
 
     private VBox createGitHubSettingsView() {
         VBox view = new VBox(20);
@@ -217,24 +275,37 @@ public class SettingsDialog extends Stage {
     }
 
     private void saveAndClose() {
-        if (repoComboBox.getValue() != null && currentUser != null) {
-            result = new AppConfig(
-                repoComboBox.getValue().getCloneUrl(),
-                tokenField.getText(),
-                currentUser.getLogin(),
-                currentUser.getEmail() != null ? currentUser.getEmail() : currentUser.getLogin() + "@users.noreply.github.com"
-            );
-            close();
-        } else {
-            // If no changes or not logged in, just close if token is empty, else warn
-            if (tokenField.getText().isEmpty()) {
-                close();
-            } else {
-                statusLabel.setText("Lütfen bir repo seçin veya iptal edin.");
-                statusLabel.setStyle("-fx-text-fill: #e06c75;");
-            }
+        // Start with existing config or defaults
+        String repoUrl = (currentConfig != null) ? currentConfig.getRepoUrl() : "";
+        String token = (currentConfig != null) ? currentConfig.getToken() : "";
+        String username = (currentConfig != null) ? currentConfig.getUsername() : "";
+        String email = (currentConfig != null) ? currentConfig.getEmail() : "";
+        int fontSize = (currentConfig != null) ? currentConfig.getEditorFontSize() : 16;
+
+        // Update from UI
+        if (tokenField != null && !tokenField.getText().isEmpty()) {
+            token = tokenField.getText();
         }
+        
+        if (repoComboBox != null && repoComboBox.getValue() != null) {
+            repoUrl = repoComboBox.getValue().getCloneUrl();
+        }
+        
+        if (currentUser != null) {
+            username = currentUser.getLogin();
+            email = currentUser.getEmail() != null ? currentUser.getEmail() : currentUser.getLogin() + "@users.noreply.github.com";
+        }
+        
+        if (fontSizeSlider != null) {
+            fontSize = (int) fontSizeSlider.getValue();
+        }
+
+        result = new AppConfig(repoUrl, token, username, email);
+        result.setEditorFontSize(fontSize);
+        
+        close();
     }
+
 
     public Optional<AppConfig> showAndWaitResult() {
         showAndWait();
