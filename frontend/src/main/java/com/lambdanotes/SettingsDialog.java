@@ -17,11 +17,14 @@ import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
 import java.util.Optional;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javafx.scene.paint.Color;
 
 public class SettingsDialog extends Stage {
 
+    private static final Logger logger = Logger.getLogger(SettingsDialog.class.getName());
     private final NoteService noteService;
     private TextField tokenField;
     private ComboBox<GitHubRepo> repoComboBox;
@@ -210,6 +213,7 @@ public class SettingsDialog extends Stage {
         }
 
         statusLabel.setText("Bağlanıyor...");
+        logger.info("Loading repos with token...");
         
         noteService.fetchGitHubUser(token)
             .thenCompose(user -> {
@@ -219,9 +223,11 @@ public class SettingsDialog extends Stage {
             .thenAccept(repos -> Platform.runLater(() -> {
                 repoComboBox.getItems().setAll(repos);
                 statusLabel.setText("Giriş başarılı: " + currentUser.getName() + " (" + repos.size() + " repo bulundu)");
+                logger.info("Repos loaded successfully.");
             }))
             .exceptionally(e -> {
                 Platform.runLater(() -> statusLabel.setText("Hata: " + e.getMessage()));
+                logger.log(Level.SEVERE, "Failed to load repos", e);
                 return null;
             });
     }
@@ -229,6 +235,7 @@ public class SettingsDialog extends Stage {
     private void startGithubLogin(Button loginBtn, VBox infoBox, TextField codeField, Button copyBtn) {
         loginBtn.setDisable(true);
         statusLabel.setText("GitHub ile iletişim kuruluyor...");
+        logger.info("Starting GitHub login process...");
 
         noteService.startGithubAuth()
             .thenAccept(resp -> Platform.runLater(() -> {
@@ -249,6 +256,7 @@ public class SettingsDialog extends Stage {
                         java.awt.Desktop.getDesktop().browse(java.net.URI.create(resp.verification_uri));
                     } catch (Exception ex) {
                         statusLabel.setText("Tarayıcı açılamadı: " + resp.verification_uri);
+                        logger.log(Level.WARNING, "Failed to open browser", ex);
                     }
                 });
                 
@@ -260,6 +268,7 @@ public class SettingsDialog extends Stage {
                     statusLabel.setText("Hata: " + e.getMessage());
                     loginBtn.setDisable(false);
                 });
+                logger.log(Level.SEVERE, "Failed to start GitHub auth", e);
                 return null;
             });
     }

@@ -90,13 +90,13 @@ func main() {
 		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
 	}
 
-	http.HandleFunc("/api/notes", handleNotes)       // GET (list), POST (save)
-	http.HandleFunc("/api/notes/", handleNoteDetail) // GET (read), DELETE (delete)
-	http.HandleFunc("/api/move", handleMove)         // POST (move/rename)
-	http.HandleFunc("/api/sync", handleSync)         // POST (git sync)
-	http.HandleFunc("/api/config", handleConfig)     // GET, POST (setup)
-	http.HandleFunc("/api/auth/github/start", handleGithubAuthStart)
-	http.HandleFunc("/api/auth/github/poll", handleGithubAuthPoll)
+	http.HandleFunc("/api/notes", loggingMiddleware(handleNotes))       // GET (list), POST (save)
+	http.HandleFunc("/api/notes/", loggingMiddleware(handleNoteDetail)) // GET (read), DELETE (delete)
+	http.HandleFunc("/api/move", loggingMiddleware(handleMove))         // POST (move/rename)
+	http.HandleFunc("/api/sync", loggingMiddleware(handleSync))         // POST (git sync)
+	http.HandleFunc("/api/config", loggingMiddleware(handleConfig))     // GET, POST (setup)
+	http.HandleFunc("/api/auth/github/start", loggingMiddleware(handleGithubAuthStart))
+	http.HandleFunc("/api/auth/github/poll", loggingMiddleware(handleGithubAuthPoll))
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
@@ -339,15 +339,26 @@ func getAuthRepoURL() string {
 }
 
 func runGitCommand(args ...string) error {
+	log.Printf("Executing git command: git %s", strings.Join(args, " "))
 	cmd := exec.Command("git", args...)
 	cmd.Dir = notesDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 	output, err := cmd.CombinedOutput()
+	if len(output) > 0 {
+		log.Printf("Git Output: %s", string(output))
+	}
 	if err != nil {
 		log.Printf("Git Error: %s\nOutput: %s", err, string(output))
 		return fmt.Errorf("%s: %s", err, string(output))
 	}
 	return nil
+}
+
+func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Request: %s %s", r.Method, r.URL.Path)
+		next(w, r)
+	}
 }
 
 func handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -359,6 +370,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == "POST" {
 		var newConfig AppConfig
 		if err := json.NewDecoder(r.Body).Decode(&newConfig); err != nil {
+			log.Printf("Config decode error: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -384,6 +396,7 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		runGitCommand("remote", "remove", "origin")
 		authURL := getAuthRepoURL()
 		if err := runGitCommand("remote", "add", "origin", authURL); err != nil {
+			log.Printf("Remote add error: %v", err)
 			http.Error(w, "Remote eklenemedi: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

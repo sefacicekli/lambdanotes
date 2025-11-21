@@ -10,8 +10,11 @@ import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class NoteService {
+    private static final Logger logger = Logger.getLogger(NoteService.class.getName());
     private static final String API_URL = "http://localhost:8080/api";
     private final HttpClient client;
     private final Gson gson;
@@ -117,6 +120,7 @@ public class NoteService {
     }
 
     public CompletableFuture<List<GitHubRepo>> fetchUserRepos(String token) {
+        logger.info("Fetching user repos...");
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.github.com/user/repos?sort=updated&per_page=100"))
                 .header("Authorization", "Bearer " + token)
@@ -127,13 +131,16 @@ public class NoteService {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
+                        logger.severe("GitHub API Error (fetchUserRepos): " + response.body());
                         throw new RuntimeException("GitHub API Error: " + response.body());
                     }
+                    logger.info("User repos fetched successfully.");
                     return gson.fromJson(response.body(), new TypeToken<List<GitHubRepo>>(){}.getType());
                 });
     }
 
     public CompletableFuture<GitHubUser> fetchGitHubUser(String token) {
+        logger.info("Fetching GitHub user info...");
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.github.com/user"))
                 .header("Authorization", "Bearer " + token)
@@ -144,8 +151,10 @@ public class NoteService {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
+                        logger.severe("GitHub API Error (fetchGitHubUser): " + response.body());
                         throw new RuntimeException("GitHub API Error: " + response.body());
                     }
+                    logger.info("GitHub user info fetched successfully.");
                     return gson.fromJson(response.body(), GitHubUser.class);
                 });
     }
@@ -167,6 +176,7 @@ public class NoteService {
     }
 
     public CompletableFuture<GithubDeviceCodeResponse> startGithubAuth() {
+        logger.info("Starting GitHub Device Flow...");
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(API_URL + "/auth/github/start"))
                 .POST(HttpRequest.BodyPublishers.noBody())
@@ -175,8 +185,10 @@ public class NoteService {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) {
+                        logger.severe("Auth start failed: " + response.body());
                         throw new RuntimeException("Auth start failed: " + response.body());
                     }
+                    logger.info("GitHub Device Flow started.");
                     return gson.fromJson(response.body(), GithubDeviceCodeResponse.class);
                 });
     }
@@ -190,7 +202,10 @@ public class NoteService {
                 .build();
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> gson.fromJson(response.body(), GithubTokenResponse.class));
+                .thenApply(response -> {
+                     // Log response if needed, but polling can be spammy
+                     return gson.fromJson(response.body(), GithubTokenResponse.class);
+                });
     }
 
     public CompletableFuture<AppConfig> getConfig() {
