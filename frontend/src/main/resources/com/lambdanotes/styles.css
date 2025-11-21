@@ -380,11 +380,17 @@
     -fx-background-color: transparent;
     -fx-text-fill: #abb2bf;
     -fx-padding: 4px 8px;
+    -fx-font-family: "Segoe UI", sans-serif; /* Cleaner font for tree */
+    -fx-font-size: 13px;
 }
 
-.tree-cell:filled:selected, .tree-cell:filled:hover {
-    -fx-background-color: #2c313a;
+.tree-cell:filled:selected, .tree-cell:filled:selected:hover {
+    -fx-background-color: #4b6eaf; /* IntelliJ Selection Blue */
     -fx-text-fill: white;
+}
+
+.tree-cell:filled:hover {
+    -fx-background-color: #2c313a;
 }
 
 .title-field {
@@ -514,6 +520,23 @@
 
 .notification-action-link:hover {
     -fx-underline: true;
+}
+
+.line-numbers {
+    -fx-background-color: transparent;
+    -fx-text-fill: #5c6370;
+    -fx-font-family: "Roboto Mono", "Consolas", monospace;
+    -fx-font-size: 16px;
+    -fx-padding: 20 5 20 0;
+    -fx-alignment: TOP-RIGHT;
+    -fx-border-color: #181a1f;
+    -fx-border-width: 0 1px 0 0;
+    -fx-control-inner-background: transparent;
+}
+
+.line-numbers .content {
+    -fx-background-color: transparent;
+    -fx-alignment: TOP-RIGHT;
 }
 
 

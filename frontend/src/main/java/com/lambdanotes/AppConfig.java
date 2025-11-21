@@ -6,6 +6,7 @@ public class AppConfig {
     private String username;
     private String email;
     private int editorFontSize = 14; // Default font size
+    private boolean showLineNumbers = true; // Default show line numbers
 
     public AppConfig(String repoUrl, String token, String username, String email) {
         this.repoUrl = repoUrl;
@@ -26,4 +27,7 @@ public class AppConfig {
 
     public int getEditorFontSize() { return editorFontSize; }
     public void setEditorFontSize(int editorFontSize) { this.editorFontSize = editorFontSize; }
+
+    public boolean isShowLineNumbers() { return showLineNumbers; }
+    public void setShowLineNumbers(boolean showLineNumbers) { this.showLineNumbers = showLineNumbers; }
 }

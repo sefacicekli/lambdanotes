@@ -3,6 +3,7 @@ package com.lambdanotes;
 import atlantafx.base.theme.PrimerDark;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -16,6 +17,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.web.WebView;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.scene.layout.StackPane;
@@ -44,11 +46,17 @@ import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.util.logging.Level;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import javafx.scene.text.Font;
+import javafx.scene.shape.SVGPath;
+import javafx.scene.control.ScrollBar;
+import javafx.geometry.Orientation;
+import java.util.Set;
+import javafx.scene.Node;
 
 public class App extends Application {
 
@@ -57,6 +65,7 @@ public class App extends Application {
     private NoteService noteService;
     private TreeView<String> noteTreeView;
     private TextArea editorArea;
+    private TextArea lineNumbers;
     private WebView previewArea;
     private TextField titleField;
     private Parser parser;
@@ -249,10 +258,11 @@ public class App extends Application {
         editorArea = new TextArea();
         editorArea.setPromptText("Markdown yazmaya başla...");
         editorArea.getStyleClass().add("editor-area");
-        editorArea.setWrapText(true); // Infinite canvas feel (wrapping)
+        editorArea.setWrapText(false); // Disable wrap for code editor feel and line number sync
         editorArea.textProperty().addListener((obs, oldVal, newVal) -> {
             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) updatePreview(newVal);
             updateEditorStats(newVal);
+            updateLineNumbers();
             autoSaveTimer.playFromStart(); // Reset timer on change
         });
         
@@ -262,6 +272,23 @@ public class App extends Application {
         // Layout Listeners for Centering
         editorArea.widthProperty().addListener((obs, oldVal, newVal) -> updateEditorStyle());
         titleField.widthProperty().addListener((obs, oldVal, newVal) -> updateTitleStyle());
+
+        // Sync Scrollbars after layout
+        Platform.runLater(() -> {
+            Set<Node> nodes = editorArea.lookupAll(".scroll-bar");
+            for (Node node : nodes) {
+                if (node instanceof ScrollBar) {
+                    ScrollBar sb = (ScrollBar) node;
+                    if (sb.getOrientation() == Orientation.VERTICAL) {
+                        sb.valueProperty().addListener((obs, oldVal, newVal) -> {
+                            if (lineNumbers != null) {
+                                lineNumbers.setScrollTop(editorArea.getScrollTop());
+                            }
+                        });
+                    }
+                }
+            }
+        });
 
         previewArea = new WebView();
         previewArea.setPageFill(Color.TRANSPARENT);
@@ -776,6 +803,14 @@ public class App extends Application {
             currentEditorFontSize = config.getEditorFontSize();
             updateEditorStyle();
         }
+        if (lineNumbers != null) {
+            boolean show = config.isShowLineNumbers();
+            lineNumbers.setVisible(show);
+            lineNumbers.setManaged(show);
+            if (show) {
+                updateLineNumbers();
+            }
+        }
     }
 
     private void updateEditorStyle() {
@@ -833,6 +868,7 @@ public class App extends Application {
             mainLayout.setCenter(mainContent); // Switch to content view
             titleField.setText(note.getFilename());
             editorArea.setText(note.getContent());
+            updateLineNumbers();
             updateEditorStats(note.getContent());
             setViewMode(ViewMode.READING); // Default to Reading mode on load
         }));
@@ -873,6 +909,41 @@ public class App extends Application {
     
     private void deleteNote() {
         deleteNote(noteTreeView.getSelectionModel().getSelectedItem());
+    }
+
+    private void exportToPdf(TreeItem<String> item) {
+        if (item == null || !item.isLeaf()) return;
+        String filename = buildPath(item);
+        
+        noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("PDF Olarak Kaydet");
+            fileChooser.setInitialFileName(note.getFilename().replace(".md", ".pdf"));
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Dosyası", "*.pdf"));
+            File file = fileChooser.showSaveDialog(mainLayout.getScene().getWindow());
+            
+            if (file != null) {
+                try {
+                    String html = renderer.render(parser.parse(note.getContent()));
+                    // Add basic styling for PDF
+                    String styledHtml = "<html><head><style>" +
+                        "body { font-family: 'Arial', sans-serif; font-size: 12pt; line-height: 1.5; }" +
+                        "h1, h2, h3 { color: #333; }" +
+                        "code { background-color: #f0f0f0; padding: 2px 4px; }" +
+                        "pre { background-color: #f0f0f0; padding: 10px; white-space: pre-wrap; }" +
+                        "table { border-collapse: collapse; width: 100%; }" +
+                        "th, td { border: 1px solid #ddd; padding: 8px; }" +
+                        "th { background-color: #f2f2f2; }" +
+                        "</style></head><body>" + html + "</body></html>";
+
+                    PdfConverterExtension.exportToPdf(file.getAbsolutePath(), styledHtml, "", parser.getOptions());
+                    showNotification("Başarılı", "PDF başarıyla oluşturuldu.", NotificationType.SUCCESS, "Aç", () -> getHostServices().showDocument(file.getAbsolutePath()));
+                } catch (Exception e) {
+                    showAlert("Hata", "PDF oluşturulurken hata oluştu: " + e.getMessage());
+                    logger.log(Level.SEVERE, "PDF export failed", e);
+                }
+            }
+        }));
     }
 
     private HBox createStatusBar() {
@@ -1027,6 +1098,7 @@ public class App extends Application {
                 logger.info("Sync completed successfully.");
             })).exceptionally(e -> {
                 Platform.runLater(() -> {
+                    refreshNoteList(); // Sync failed, but still load local notes
                     statusLabel.setText("Hata");
                     syncSpinner.setVisible(false);
                     rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
@@ -1053,6 +1125,7 @@ public class App extends Application {
                     logger.info("Sync completed successfully (config fetch failed).");
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {
+                        refreshNoteList(); // Sync failed, but still load local notes
                         statusLabel.setText("Hata");
                         syncSpinner.setVisible(false);
                         rootStack.getChildren().remove(loadingOverlay);
@@ -1067,10 +1140,13 @@ public class App extends Application {
     }
 
     private void refreshNoteList() {
+        logger.info("Refreshing note list...");
         noteService.getNotes().thenAccept(notes -> Platform.runLater(() -> {
+            logger.info("Notes received: " + (notes != null ? notes.size() : "null"));
             allNotes = notes; // Cache for search
             buildTreeFromList(notes);
         })).exceptionally(e -> {
+            logger.log(Level.SEVERE, "Failed to refresh note list", e);
             Platform.runLater(() -> {
                 statusLabel.setText("Bağlantı Hatası!");
                 // Optional: Show a placeholder in the tree view
@@ -1085,6 +1161,7 @@ public class App extends Application {
         mainLayout.setCenter(mainContent); // Switch to content view
         titleField.clear();
         editorArea.clear();
+        updateLineNumbers();
         noteTreeView.getSelectionModel().clearSelection();
         updateEditorStats("");
         setViewMode(ViewMode.WRITING); // Default to Writing mode for new note
@@ -1094,13 +1171,38 @@ public class App extends Application {
         VBox container = new VBox();
         container.getStyleClass().add("editor-panel");
 
-        StackPane editorBody = new StackPane(editorArea);
-        editorBody.getStyleClass().add("panel-body");
-        StackPane.setAlignment(editorArea, Pos.TOP_LEFT);
+        lineNumbers = new TextArea("1");
+        lineNumbers.setEditable(false);
+        lineNumbers.getStyleClass().add("line-numbers");
+        lineNumbers.setWrapText(false);
+        lineNumbers.setPrefWidth(50);
+        lineNumbers.setMinWidth(50);
+        lineNumbers.setMaxWidth(50);
+        // Hide scrollbar for line numbers
+        lineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
 
+        HBox editorBox = new HBox(lineNumbers, editorArea);
+        HBox.setHgrow(editorArea, Priority.ALWAYS);
+        
+        StackPane editorBody = new StackPane(editorBox);
+        editorBody.getStyleClass().add("panel-body");
+        
         VBox.setVgrow(editorBody, Priority.ALWAYS);
         container.getChildren().addAll(editorBody);
         return container;
+    }
+
+    private void updateLineNumbers() {
+        if (lineNumbers == null || editorArea == null) return;
+        String text = editorArea.getText();
+        if (text == null) text = "";
+        int lines = text.split("\n", -1).length;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= lines; i++) {
+            sb.append(i).append("\n");
+        }
+        lineNumbers.setText(sb.toString());
+        lineNumbers.setScrollTop(editorArea.getScrollTop());
     }
 
     private VBox createPreviewPanel() {
@@ -1140,6 +1242,19 @@ public class App extends Application {
         alert.setContentText(content);
         alert.showAndWait();
     }
+
+    private Node createIcon(String path, String color) {
+        SVGPath svg = new SVGPath();
+        svg.setContent(path);
+        svg.setFill(Color.web(color));
+        // Scale down if needed, but usually path should be sized correctly or scaled
+        svg.setScaleX(0.8);
+        svg.setScaleY(0.8);
+        return svg;
+    }
+
+    private static final String FOLDER_ICON = "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z";
+    private static final String FILE_ICON = "M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z";
 
     // Drag & Drop TreeCell Implementation
     private class DraggableTreeCell extends TreeCell<String> {
@@ -1204,19 +1319,30 @@ public class App extends Application {
                 setGraphic(null);
                 setContextMenu(null);
             } else {
-                setText(item);
+                // Show only filename, not full path
+                String displayName = item;
+                if (item.contains("/")) {
+                    displayName = item.substring(item.lastIndexOf("/") + 1);
+                }
+                setText(displayName);
+                
                 // İkon ekleyebiliriz: Klasör veya Dosya
                 if (getTreeItem().isLeaf()) {
-                    setGraphic(new Label("📄")); 
+                    setGraphic(createIcon(FILE_ICON, "#abb2bf")); 
                     
-                    // Context Menu for Delete
+                    // Context Menu
                     ContextMenu contextMenu = new ContextMenu();
+                    
+                    MenuItem exportPdfItem = new MenuItem("PDF Olarak Dışarı Aktar");
+                    exportPdfItem.setOnAction(e -> exportToPdf(getTreeItem()));
+                    
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
-                    contextMenu.getItems().add(deleteItem);
+                    
+                    contextMenu.getItems().addAll(exportPdfItem, new SeparatorMenuItem(), deleteItem);
                     setContextMenu(contextMenu);
                 } else {
-                    setGraphic(new Label("📁"));
+                    setGraphic(createIcon(FOLDER_ICON, "#d19a66"));
                     setContextMenu(null);
                 }
             }
@@ -1326,6 +1452,8 @@ public class App extends Application {
     }
 
     public static void main(String[] args) {
+        System.setProperty("prism.lcdtext", "false");
+        System.setProperty("prism.text", "t2k");
         launch(args);
     }
 

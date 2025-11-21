@@ -52,6 +52,13 @@
             <artifactId>atlantafx-base</artifactId>
             <version>2.0.1</version>
         </dependency>
+
+        <!-- PDF Converter -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-pdf-converter</artifactId>
+            <version>0.64.8</version>
+        </dependency>
     </dependencies>
 
     <build>

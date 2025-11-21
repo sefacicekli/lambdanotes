@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -13,11 +14,14 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
 	notesDir   = "./notes"
 	configFile = "./config.json"
+	dbFile     = "./notes.db"
 	port       = ":8080"
 
 	githubClientID     = "Ov23liq3HVgaBCjZ6Pda"
@@ -30,10 +34,12 @@ type Note struct {
 }
 
 type AppConfig struct {
-	RepoURL  string `json:"repoUrl"`
-	Token    string `json:"token"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	RepoURL         string `json:"repoUrl"`
+	Token           string `json:"token"`
+	Username        string `json:"username"`
+	Email           string `json:"email"`
+	EditorFontSize  int    `json:"editorFontSize"`
+	ShowLineNumbers bool   `json:"showLineNumbers"`
 }
 
 type SyncRequest struct {
@@ -43,6 +49,7 @@ type SyncRequest struct {
 var (
 	mu     sync.Mutex
 	config AppConfig
+	db     *sql.DB
 )
 
 type MoveRequest struct {
@@ -78,6 +85,7 @@ func main() {
 
 	fmt.Println("Starting backend...")
 	loadConfig()
+	initDB()
 
 	// Not klasörünü oluştur
 	if _, err := os.Stat(notesDir); os.IsNotExist(err) {
@@ -89,6 +97,8 @@ func main() {
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
 		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
 	}
+
+	syncDatabase()
 
 	http.HandleFunc("/api/notes", loggingMiddleware(handleNotes))       // GET (list), POST (save)
 	http.HandleFunc("/api/notes/", loggingMiddleware(handleNoteDetail)) // GET (read), DELETE (delete)
@@ -134,6 +144,9 @@ func handleMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sync DB to reflect changes (renames/moves)
+	syncDatabase()
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -142,28 +155,19 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method == "GET" {
-		var notes []string
-		err := filepath.Walk(notesDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			// .git klasörünü yoksay
-			if strings.Contains(path, ".git") {
-				return nil
-			}
-
-			if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
-				rel, err := filepath.Rel(notesDir, path)
-				if err == nil {
-					notes = append(notes, filepath.ToSlash(rel))
-				}
-			}
-			return nil
-		})
-
+		notes := []string{}
+		rows, err := db.Query("SELECT path FROM notes")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var path string
+			if err := rows.Scan(&path); err == nil {
+				notes = append(notes, path)
+			}
 		}
 		json.NewEncoder(w).Encode(notes)
 	} else if r.Method == "POST" {
@@ -198,6 +202,13 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		// Update DB
+		_, err = db.Exec("INSERT OR REPLACE INTO notes(path, content) VALUES(?, ?)", note.Filename, note.Content)
+		if err != nil {
+			log.Println("Error updating DB after save:", err)
+		}
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -220,6 +231,13 @@ func handleNoteDetail(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		os.Remove(path)
+
+		// Update DB
+		_, err := db.Exec("DELETE FROM notes WHERE path = ?", filename)
+		if err != nil {
+			log.Println("Error deleting from DB:", err)
+		}
+
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -309,6 +327,9 @@ func handleSync(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Senkronizasyon hatası: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Sync DB after Git Sync
+	syncDatabase()
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "synced"})
@@ -502,4 +523,100 @@ func handleGithubAuthPoll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write(body)
+}
+
+func initDB() {
+	var err error
+	db, err = sql.Open("sqlite", dbFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	createTableSQL := `CREATE TABLE IF NOT EXISTS notes (
+		"path" TEXT PRIMARY KEY,
+		"content" TEXT
+	);`
+
+	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func syncDatabase() {
+	log.Println("Syncing database with filesystem...")
+
+	// Get all files from FS
+	files := make(map[string]string)
+	err := filepath.Walk(notesDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.Contains(path, ".git") {
+			return nil
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+			rel, err := filepath.Rel(notesDir, path)
+			if err == nil {
+				content, err := ioutil.ReadFile(path)
+				if err == nil {
+					files[filepath.ToSlash(rel)] = string(content)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Println("Error walking notes dir:", err)
+		return
+	}
+
+	log.Printf("Found %d files in filesystem.", len(files))
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Println("Error beginning transaction:", err)
+		return
+	}
+
+	// Insert or Update
+	stmt, err := tx.Prepare("INSERT OR REPLACE INTO notes(path, content) VALUES(?, ?)")
+	if err != nil {
+		log.Println("Error preparing statement:", err)
+		tx.Rollback()
+		return
+	}
+	defer stmt.Close()
+
+	for path, content := range files {
+		_, err = stmt.Exec(path, content)
+		if err != nil {
+			log.Println("Error inserting note:", path, err)
+		}
+	}
+
+	// Delete removed files
+	rows, err := db.Query("SELECT path FROM notes")
+	if err == nil {
+		defer rows.Close()
+		var dbPath string
+		var toDelete []string
+		for rows.Next() {
+			rows.Scan(&dbPath)
+			if _, exists := files[dbPath]; !exists {
+				toDelete = append(toDelete, dbPath)
+			}
+		}
+
+		for _, p := range toDelete {
+			log.Println("Deleting removed file from DB:", p)
+			tx.Exec("DELETE FROM notes WHERE path = ?", p)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Println("Error committing transaction:", err)
+	} else {
+		log.Println("Database sync complete.")
+	}
 }
