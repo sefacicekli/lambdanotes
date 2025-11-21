@@ -2,6 +2,7 @@ module com.lambdanotes {
     requires javafx.controls;
     requires javafx.fxml;
     requires javafx.web;
+    requires java.desktop;
     requires java.net.http;
     requires com.google.gson;
     requires flexmark;

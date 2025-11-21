@@ -6,17 +6,22 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
 	notesDir   = "./notes"
 	configFile = "./config.json"
 	port       = ":8080"
+
+	githubClientID     = "Ov23liq3HVgaBCjZ6Pda"
+	githubClientSecret = "32560715b1ffd6ce2eb0474d8f23ac7948d24efd"
 )
 
 type Note struct {
@@ -45,7 +50,24 @@ type MoveRequest struct {
 	NewPath string `json:"newPath"`
 }
 
+type GithubDeviceCodeResponse struct {
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	ExpiresIn       int    `json:"expires_in"`
+	Interval        int    `json:"interval"`
+}
+
+type GithubTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
+	Error       string `json:"error"`
+	ErrorDesc   string `json:"error_description"`
+}
+
 func main() {
+	fmt.Println("Starting backend...")
 	loadConfig()
 
 	// Not klasörünü oluştur
@@ -53,11 +75,19 @@ func main() {
 		os.Mkdir(notesDir, 0755)
 	}
 
+	// .gitignore oluştur (Sadece markdown dosyalarını takip et)
+	gitignorePath := filepath.Join(notesDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
+	}
+
 	http.HandleFunc("/api/notes", handleNotes)       // GET (list), POST (save)
 	http.HandleFunc("/api/notes/", handleNoteDetail) // GET (read), DELETE (delete)
 	http.HandleFunc("/api/move", handleMove)         // POST (move/rename)
 	http.HandleFunc("/api/sync", handleSync)         // POST (git sync)
 	http.HandleFunc("/api/config", handleConfig)     // GET, POST (setup)
+	http.HandleFunc("/api/auth/github/start", handleGithubAuthStart)
+	http.HandleFunc("/api/auth/github/poll", handleGithubAuthPoll)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
@@ -302,6 +332,7 @@ func getAuthRepoURL() string {
 func runGitCommand(args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = notesDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("Git Error: %s\nOutput: %s", err, string(output))
@@ -349,9 +380,104 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 4. İlk pull (eğer repo boş değilse)
-		runGitCommand("pull", "origin", "main", "--allow-unrelated-histories")
+		if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
+			log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+		}
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "configured"})
 	}
+}
+
+func handleGithubAuthStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// GitHub Device Flow başlat
+	data := url.Values{}
+	data.Set("client_id", githubClientID)
+	data.Set("scope", "repo") // Repo erişimi için scope
+
+	req, err := http.NewRequest("POST", "https://github.com/login/device/code", strings.NewReader(data.Encode()))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+	w.Write(body)
+}
+
+func handleGithubAuthPoll(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		DeviceCode string `json:"device_code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	data := url.Values{}
+	data.Set("client_id", githubClientID)
+	data.Set("device_code", req.DeviceCode)
+	data.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+	// Client Secret is optional for public apps but recommended if available.
+	// Since we have it, let's include it to be safe, although for device flow it might not be strictly enforced for all app types.
+	// However, standard OAuth flow usually requires it. Let's try with it.
+	data.Set("client_secret", githubClientSecret)
+
+	postReq, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(data.Encode()))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	postReq.Header.Set("Accept", "application/json")
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{}
+	resp, err := client.Do(postReq)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Yanıtı oku
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	// Eğer başarılı bir token geldiyse, config'e kaydet
+	var tokenResp GithubTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err == nil && tokenResp.AccessToken != "" {
+		mu.Lock()
+		config.Token = tokenResp.AccessToken
+		// Kullanıcı adını henüz bilmiyoruz ama token var.
+		// İstenirse token ile user info çekilebilir ama şimdilik sadece token'ı kaydedelim.
+		saveConfig()
+		mu.Unlock()
+	}
+
+	w.Write(body)
 }
