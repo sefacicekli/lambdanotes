@@ -149,5 +149,63 @@ public class NoteService {
                     return gson.fromJson(response.body(), GitHubUser.class);
                 });
     }
+
+    public static class GithubDeviceCodeResponse {
+        public String device_code;
+        public String user_code;
+        public String verification_uri;
+        public int expires_in;
+        public int interval;
+    }
+
+    public static class GithubTokenResponse {
+        public String access_token;
+        public String token_type;
+        public String scope;
+        public String error;
+        public String error_description;
+    }
+
+    public CompletableFuture<GithubDeviceCodeResponse> startGithubAuth() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/auth/github/start"))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Auth start failed: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), GithubDeviceCodeResponse.class);
+                });
+    }
+
+    public CompletableFuture<GithubTokenResponse> pollGithubAuth(String deviceCode) {
+        String json = String.format("{\"device_code\": \"%s\"}", deviceCode);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/auth/github/poll"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> gson.fromJson(response.body(), GithubTokenResponse.class));
+    }
+
+    public CompletableFuture<AppConfig> getConfig() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/config"))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get config");
+                    }
+                    return gson.fromJson(response.body(), AppConfig.class);
+                });
+    }
 }
 

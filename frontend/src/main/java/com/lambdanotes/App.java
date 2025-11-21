@@ -659,16 +659,26 @@ public class App extends Application {
 
 
     private void openSettings() {
-        SettingsDialog dialog = new SettingsDialog(noteService);
-        Optional<AppConfig> result = dialog.showAndWaitResult();
+        // Mevcut config'i al (bunu bir yerde saklamamız lazım, şimdilik servisten çekelim)
+        noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
+            SettingsDialog dialog = new SettingsDialog(noteService, config);
+            Optional<AppConfig> result = dialog.showAndWaitResult();
 
-        result.ifPresent(config -> {
-            noteService.saveConfig(config).thenRun(() -> Platform.runLater(() -> {
-                showAlert("Başarılı", "Ayarlar kaydedildi ve Git yapılandırıldı.");
-            })).exceptionally(e -> {
-                Platform.runLater(() -> showAlert("Hata", "Ayarlar kaydedilemedi: " + e.getMessage()));
-                return null;
+            result.ifPresent(newConfig -> {
+                noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
+                    showAlert("Başarılı", "Ayarlar kaydedildi ve Git yapılandırıldı.");
+                })).exceptionally(e -> {
+                    Platform.runLater(() -> showAlert("Hata", "Ayarlar kaydedilemedi: " + e.getMessage()));
+                    return null;
+                });
             });
+        })).exceptionally(e -> {
+            // Config çekilemezse boş aç
+            Platform.runLater(() -> {
+                SettingsDialog dialog = new SettingsDialog(noteService, null);
+                dialog.showAndWaitResult();
+            });
+            return null;
         });
     }
 
@@ -815,15 +825,29 @@ public class App extends Application {
         statusLabel.setText("Senkronize ediliyor...");
         syncSpinner.setVisible(true);
         
+        // Loading overlay göster
+        VBox loadingOverlay = new VBox(10);
+        loadingOverlay.setAlignment(Pos.CENTER);
+        loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
+        
+        ProgressIndicator pi = new ProgressIndicator();
+        Label loadingLabel = new Label("Senkronize ediliyor, lütfen bekleyin...");
+        loadingLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        
+        loadingOverlay.getChildren().addAll(pi, loadingLabel);
+        rootStack.getChildren().add(loadingOverlay);
+        
         noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
             statusLabel.setText("Hazır");
             syncSpinner.setVisible(false);
+            rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
             showNotification("Senkronizasyon Tamamlandı", "https://github.com/sefacicekli/devopsnotes");
         })).exceptionally(e -> {
             Platform.runLater(() -> {
                 statusLabel.setText("Hata");
                 syncSpinner.setVisible(false);
+                rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
                 showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
             });
             return null;
