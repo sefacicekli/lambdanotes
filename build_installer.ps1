@@ -65,7 +65,7 @@ Pop-Location
 # --- 4. Create Runtime (jlink) ---
 Write-Host "4. Creating Custom Runtime (jlink)..."
 # Modules required for a typical JavaFX app (even if shaded, we need the base platform)
-$modules = "java.base,java.desktop,java.logging,java.scripting,java.xml,jdk.jsobject,jdk.unsupported,jdk.xml.dom,java.net.http,java.datatransfer,java.prefs"
+$modules = "java.base,java.desktop,java.logging,java.scripting,java.xml,jdk.jsobject,jdk.unsupported,jdk.xml.dom,java.net.http,java.datatransfer,java.prefs,jdk.crypto.ec"
 
 # Find jlink
 $jlink = "jlink"
