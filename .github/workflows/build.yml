@@ -39,7 +39,7 @@ jobs:
       run: .\build_installer.ps1
 
     - name: Create Portable ZIP
-      run: |
+      run: |  
         Compress-Archive -Path installer_output/LambdaNotes -DestinationPath LambdaNotes-Portable.zip
 
     - name: Upload Portable Artifact
