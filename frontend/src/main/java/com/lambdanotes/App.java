@@ -47,6 +47,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import javafx.scene.text.Font;
 
 public class App extends Application {
 
@@ -66,9 +67,15 @@ public class App extends Application {
     private VBox previewPanel;
     private Label editorStatsLabel;
     private Label previewStatusLabel;
+    private Label viewModeLabel; // New label for footer
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
     
+    // Layout Components
+    private BorderPane mainLayout;
+    private VBox mainContent;
+    private StackPane emptyState;
+
     // Window State for Custom Maximize
     private double savedX, savedY, savedWidth, savedHeight;
     private boolean isMaximized = false;
@@ -96,6 +103,17 @@ public class App extends Application {
     @Override
     public void start(Stage stage) {
         setupLogging();
+        
+        // Load Fonts
+        try {
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-BoldItalic.ttf"), 10);
+        } catch (Exception e) {
+            logger.warning("Could not load fonts: " + e.getMessage());
+        }
+
         // Start Backend
         backendManager = new BackendManager();
         backendManager.startBackend();
@@ -116,7 +134,7 @@ public class App extends Application {
         rootStack.getStyleClass().add("root-stack");
 
         // Main Layout
-        BorderPane mainLayout = new BorderPane();
+        mainLayout = new BorderPane();
         mainLayout.getStyleClass().add("root-pane");
         
         // Custom Window Title Bar
@@ -186,8 +204,9 @@ public class App extends Application {
         searchField.getStyleClass().add("search-field");
         searchField.textProperty().addListener((obs, oldVal, newVal) -> filterNotes(newVal));
         
-        VBox sidebarTop = new VBox(5, explorerHeader, searchField);
-        sidebarTop.setPadding(new Insets(0, 10, 10, 10));
+        // Sidebar Top Container
+        VBox sidebarTop = new VBox(0, explorerHeader, searchField);
+        sidebarTop.setPadding(new Insets(0)); // Remove padding to let search field fill width
 
         VBox sidebar = new VBox(sidebarTop, noteTreeView);
         sidebar.getStyleClass().add("sidebar");
@@ -197,7 +216,7 @@ public class App extends Application {
         mainLayout.setLeft(sidebar);
 
         // Main Content
-        VBox mainContent = new VBox();
+        mainContent = new VBox();
         mainContent.getStyleClass().add("main-content");
         mainContent.setPadding(new Insets(20, 40, 20, 40));
         mainContent.setSpacing(20);
@@ -236,7 +255,15 @@ public class App extends Application {
         VBox.setVgrow(splitPane, Priority.ALWAYS);
 
         mainContent.getChildren().addAll(titleField, splitPane);
-        mainLayout.setCenter(mainContent);
+        
+        // Empty State
+        emptyState = new StackPane();
+        Label emptyLabel = new Label("LambdaNotes");
+        emptyLabel.setStyle("-fx-text-fill: #3e4451; -fx-font-size: 48px; -fx-font-weight: bold;");
+        emptyState.getChildren().add(emptyLabel);
+        
+        // Set initial center to Empty State
+        mainLayout.setCenter(emptyState);
 
         // Status Bar
         HBox statusBar = createStatusBar();
@@ -397,14 +424,17 @@ public class App extends Application {
             case READING:
                 splitPane.getItems().add(previewPanel);
                 updatePreview(editorArea.getText());
+                if (viewModeLabel != null) viewModeLabel.setText("Okuma Modu");
                 break;
             case WRITING:
                 splitPane.getItems().add(editorPanel);
+                if (viewModeLabel != null) viewModeLabel.setText("Yazma Modu");
                 break;
             case SPLIT:
                 splitPane.getItems().addAll(editorPanel, previewPanel);
                 splitPane.setDividerPositions(0.5);
                 updatePreview(editorArea.getText());
+                if (viewModeLabel != null) viewModeLabel.setText("Split Modu");
                 break;
         }
         updateModeSwitcherState();
@@ -716,14 +746,17 @@ public class App extends Application {
 
     private void updatePreview(String markdown) {
         String html = renderer.render(parser.parse(markdown));
+        
+        // Get font URL for WebView
+        String fontUrl = getClass().getResource("fonts/Roboto-Regular.ttf").toExternalForm();
+        
         String styledHtml = "<html><head>" +
-                "<link rel='preconnect' href='https://fonts.googleapis.com'>" +
-                "<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>" +
-                "<link href='https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap' rel='stylesheet'>" +
                 "<style>" +
+                "@font-face { font-family: 'Roboto'; src: url('" + fontUrl + "'); }" +
                 "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: #282c34; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
-                "h1, h2, h3 { color: #e06c75; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
+                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
+                "strong, b { color: #abb2bf; font-weight: bold; }" +
                 "code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #98c379; font-size: 0.9em; }" +
                 "pre { background-color: #21252b; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #181a1f; }" +
                 "pre code { background-color: transparent; padding: 0; color: #abb2bf; }" +
@@ -743,6 +776,7 @@ public class App extends Application {
 
     private void loadNote(String filename) {
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
+            mainLayout.setCenter(mainContent); // Switch to content view
             titleField.setText(note.getFilename());
             editorArea.setText(note.getContent());
             updateEditorStats(note.getContent());
@@ -803,6 +837,9 @@ public class App extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        viewModeLabel = new Label("Okuma Modu");
+        viewModeLabel.getStyleClass().add("status-label");
+
         previewStatusLabel = new Label("");
         previewStatusLabel.getStyleClass().add("status-label"); // Use status-label style
 
@@ -812,7 +849,7 @@ public class App extends Application {
         Label branchLabel = new Label("main*"); // Mock branch name
         branchLabel.getStyleClass().add("status-branch");
 
-        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
+        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
         return statusBar;
     }
 
@@ -931,6 +968,7 @@ public class App extends Application {
     }
 
     private void clearEditor() {
+        mainLayout.setCenter(mainContent); // Switch to content view
         titleField.clear();
         editorArea.clear();
         noteTreeView.getSelectionModel().clearSelection();
@@ -942,29 +980,12 @@ public class App extends Application {
         VBox container = new VBox();
         container.getStyleClass().add("editor-panel");
 
-        HBox header = new HBox(10);
-        header.getStyleClass().add("panel-header");
-        header.setAlignment(Pos.CENTER_LEFT);
-
-        Label badge = new Label("MD");
-        badge.getStyleClass().add("panel-badge");
-
-        Label title = new Label("Markdown Editör");
-        title.getStyleClass().add("panel-title");
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        // Stats moved to status bar
-
-        header.getChildren().addAll(badge, title, spacer);
-
         StackPane editorBody = new StackPane(editorArea);
         editorBody.getStyleClass().add("panel-body");
         StackPane.setAlignment(editorArea, Pos.TOP_LEFT);
 
         VBox.setVgrow(editorBody, Priority.ALWAYS);
-        container.getChildren().addAll(header, editorBody);
+        container.getChildren().addAll(editorBody);
         return container;
     }
 
@@ -972,26 +993,11 @@ public class App extends Application {
         VBox container = new VBox();
         container.getStyleClass().add("preview-panel");
 
-        HBox header = new HBox(10);
-        header.getStyleClass().add("panel-header");
-        header.setAlignment(Pos.CENTER_LEFT);
-
-        Label badge = new Label("PRV");
-        badge.getStyleClass().add("panel-badge");
-
-        Label title = new Label("Markdown Önizleme");
-        title.getStyleClass().add("panel-title");
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        header.getChildren().addAll(badge, title, spacer);
-
         previewArea.getStyleClass().add("preview-area");
         StackPane previewBody = new StackPane(previewArea);
         previewBody.getStyleClass().add("panel-body");
         VBox.setVgrow(previewBody, Priority.ALWAYS);
-        container.getChildren().addAll(header, previewBody);
+        container.getChildren().addAll(previewBody);
         return container;
     }
 
