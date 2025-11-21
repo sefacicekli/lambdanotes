@@ -110,6 +110,21 @@ if (-not (Test-Path "$appDir\LambdaNotes.exe")) {
     exit 1
 }
 
+# --- 5.5 Create Debug Script ---
+Write-Host "5.5 Creating Debug Script..."
+$debugContent = @"
+@echo off
+echo Starting LambdaNotes in Debug Mode...
+echo.
+"%~dp0runtime\bin\java.exe" -jar "%~dp0app\lambdanotes-1.0-SNAPSHOT.jar"
+if %errorlevel% neq 0 (
+    echo.
+    echo Application exited with error code %errorlevel%
+    pause
+)
+"@
+Set-Content -Path "$appDir\debug.bat" -Value $debugContent
+
 # --- 6. Run Inno Setup ---
 Write-Host "6. Creating Installer with Inno Setup..."
 $issFile = "$PWD\installer_config\setup.iss"

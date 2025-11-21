@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
@@ -46,11 +47,18 @@ type MoveRequest struct {
 }
 
 func main() {
+	fmt.Println("Starting backend...")
 	loadConfig()
 
 	// Not klasörünü oluştur
 	if _, err := os.Stat(notesDir); os.IsNotExist(err) {
 		os.Mkdir(notesDir, 0755)
+	}
+
+	// .gitignore oluştur (Sadece markdown dosyalarını takip et)
+	gitignorePath := filepath.Join(notesDir, ".gitignore")
+	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
+		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
 	}
 
 	http.HandleFunc("/api/notes", handleNotes)       // GET (list), POST (save)
@@ -302,6 +310,7 @@ func getAuthRepoURL() string {
 func runGitCommand(args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = notesDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("Git Error: %s\nOutput: %s", err, string(output))
@@ -349,7 +358,9 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 4. İlk pull (eğer repo boş değilse)
-		runGitCommand("pull", "origin", "main", "--allow-unrelated-histories")
+		if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
+			log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+		}
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"status": "configured"})

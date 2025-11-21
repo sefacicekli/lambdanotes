@@ -28,6 +28,8 @@ import javafx.scene.input.TransferMode;
 import javafx.util.Callback;
 import javafx.animation.PauseTransition;
 import javafx.util.Duration;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.List;
 import java.util.ArrayList;
@@ -50,6 +52,10 @@ public class App extends Application {
     private SplitPane splitPane;
     private boolean isPreviewOpen = false;
     private Button btnPreview;
+    private VBox editorPanel;
+    private VBox previewPanel;
+    private Label editorStatsLabel;
+    private Label previewStatusLabel;
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
     
@@ -62,9 +68,20 @@ public class App extends Application {
     private ProgressIndicator syncSpinner;
     private StackPane rootStack;
     
+    // Version
+    private static final String APP_VERSION = "0.0.2";
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
+    
     // Explorer Components
     private TextField searchField;
     private List<String> allNotes = new ArrayList<>(); // Cache for filtering
+
+    private enum ViewMode {
+        READING, WRITING, SPLIT
+    }
+    
+    private ViewMode currentMode = ViewMode.READING;
+    private HBox modeSwitcher;
 
     @Override
     public void start(Stage stage) {
@@ -99,6 +116,7 @@ public class App extends Application {
         
         // Top Container (TitleBar + ToolBar)
         VBox topContainer = new VBox(titleBar, toolBar);
+        topContainer.getStyleClass().add("top-shell");
         mainLayout.setTop(topContainer);
 
         // Sidebar (Note Tree)
@@ -119,7 +137,7 @@ public class App extends Application {
         });
         
         // Explorer Header (Label + Buttons)
-        HBox explorerHeader = new HBox(10);
+        HBox explorerHeader = new HBox(5);
         explorerHeader.setAlignment(Pos.CENTER_LEFT);
         explorerHeader.setPadding(new Insets(10, 10, 5, 10));
         
@@ -129,17 +147,27 @@ public class App extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         
+        Button btnNewFile = new Button("📄");
+        btnNewFile.setTooltip(new Tooltip("Yeni Not"));
+        btnNewFile.getStyleClass().add("sidebar-action-button");
+        btnNewFile.setOnAction(e -> clearEditor());
+
+        Button btnNewFolder = new Button("📁");
+        btnNewFolder.setTooltip(new Tooltip("Yeni Klasör"));
+        btnNewFolder.getStyleClass().add("sidebar-action-button");
+        btnNewFolder.setOnAction(e -> createNewFolder());
+
         Button btnCollapse = new Button("-");
         btnCollapse.setTooltip(new Tooltip("Tümünü Daralt"));
-        btnCollapse.getStyleClass().add("icon-button");
+        btnCollapse.getStyleClass().add("sidebar-action-button");
         btnCollapse.setOnAction(e -> collapseAll());
 
         Button btnExpand = new Button("+");
         btnExpand.setTooltip(new Tooltip("Tümünü Genişlet"));
-        btnExpand.getStyleClass().add("icon-button");
+        btnExpand.getStyleClass().add("sidebar-action-button");
         btnExpand.setOnAction(e -> expandAll());
 
-        explorerHeader.getChildren().addAll(sidebarLabel, spacer, btnCollapse, btnExpand);
+        explorerHeader.getChildren().addAll(sidebarLabel, spacer, btnNewFile, btnNewFolder, btnCollapse, btnExpand);
 
         // Search Field
         searchField = new TextField();
@@ -165,7 +193,9 @@ public class App extends Application {
 
         titleField = new TextField();
         titleField.setPromptText("Not Başlığı");
-        titleField.setPrefWidth(500);
+        titleField.setPrefWidth(Double.MAX_VALUE);
+        titleField.setMaxWidth(Double.MAX_VALUE);
+        titleField.setAlignment(Pos.CENTER_LEFT);
         titleField.getStyleClass().add("title-field");
 
         splitPane = new SplitPane();
@@ -176,7 +206,8 @@ public class App extends Application {
         editorArea.getStyleClass().add("editor-area");
         editorArea.setWrapText(true); // Infinite canvas feel (wrapping)
         editorArea.textProperty().addListener((obs, oldVal, newVal) -> {
-            if (isPreviewOpen) updatePreview(newVal);
+            if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) updatePreview(newVal);
+            updateEditorStats(newVal);
             autoSaveTimer.playFromStart(); // Reset timer on change
         });
         
@@ -184,9 +215,13 @@ public class App extends Application {
         setupEditorContextMenu();
 
         previewArea = new WebView();
+        previewArea.setContextMenuEnabled(false);
+
+        editorPanel = createEditorPanel();
+        previewPanel = createPreviewPanel();
 
         // Default: Only Editor
-        splitPane.getItems().add(editorArea);
+        splitPane.getItems().add(editorPanel);
         VBox.setVgrow(splitPane, Priority.ALWAYS);
 
         mainContent.getChildren().addAll(titleField, splitPane);
@@ -219,10 +254,23 @@ public class App extends Application {
         
         stage.show();
 
-        refreshNoteList();
+        // Give backend a moment to start
+        new PauseTransition(Duration.seconds(1)).setOnFinished(e -> refreshNoteList());
         
-        // Default to Preview Mode
-        togglePreview();
+        // Default to Reading Mode
+        setViewMode(ViewMode.READING);
+
+        // Check for Updates
+        checkForUpdates();
+    }
+
+    private void checkForUpdates() {
+        UpdateChecker checker = new UpdateChecker();
+        checker.checkForUpdates(APP_VERSION).thenAccept(updateInfo -> {
+            if (updateInfo != null) {
+                Platform.runLater(() -> showNotification("Yeni Güncelleme: " + updateInfo.version, updateInfo.url));
+            }
+        });
     }
 
     private void toggleMaximize(Stage stage) {
@@ -253,7 +301,7 @@ public class App extends Application {
         HBox titleBar = new HBox();
         titleBar.getStyleClass().add("window-title-bar");
         titleBar.setAlignment(Pos.CENTER_LEFT);
-        titleBar.setPadding(new Insets(5, 10, 5, 10));
+        titleBar.setPadding(new Insets(0, 10, 0, 10)); // Remove vertical padding
         titleBar.setSpacing(10);
 
         Label titleLabel = new Label("LambdaNotes");
@@ -310,36 +358,94 @@ public class App extends Application {
         return path.toString();
     }
 
+    private void setViewMode(ViewMode mode) {
+        currentMode = mode;
+        splitPane.getItems().clear();
+        
+        switch (mode) {
+            case READING:
+                splitPane.getItems().add(previewPanel);
+                updatePreview(editorArea.getText());
+                break;
+            case WRITING:
+                splitPane.getItems().add(editorPanel);
+                break;
+            case SPLIT:
+                splitPane.getItems().addAll(editorPanel, previewPanel);
+                splitPane.setDividerPositions(0.5);
+                updatePreview(editorArea.getText());
+                break;
+        }
+        updateModeSwitcherState();
+        updatePreviewStatus();
+    }
+
+    private void updateModeSwitcherState() {
+        if (modeSwitcher == null) return;
+        
+        for (javafx.scene.Node node : modeSwitcher.getChildren()) {
+            if (node instanceof Button) {
+                Button btn = (Button) node;
+                ViewMode btnMode = (ViewMode) btn.getUserData();
+                if (btnMode == currentMode) {
+                    if (!btn.getStyleClass().contains("mode-button-active")) {
+                        btn.getStyleClass().add("mode-button-active");
+                    }
+                } else {
+                    btn.getStyleClass().remove("mode-button-active");
+                }
+            }
+        }
+    }
+
+    private HBox createModeSwitcher() {
+        modeSwitcher = new HBox(0);
+        modeSwitcher.getStyleClass().add("mode-switcher");
+        
+        Button btnRead = new Button("Okuma");
+        btnRead.setUserData(ViewMode.READING);
+        btnRead.getStyleClass().add("mode-button");
+        btnRead.getStyleClass().add("mode-button-left");
+        btnRead.setOnAction(e -> setViewMode(ViewMode.READING));
+        
+        Button btnWrite = new Button("Yazma");
+        btnWrite.setUserData(ViewMode.WRITING);
+        btnWrite.getStyleClass().add("mode-button");
+        btnWrite.getStyleClass().add("mode-button-center");
+        btnWrite.setOnAction(e -> setViewMode(ViewMode.WRITING));
+        
+        Button btnSplit = new Button("Split");
+        btnSplit.setUserData(ViewMode.SPLIT);
+        btnSplit.getStyleClass().add("mode-button");
+        btnSplit.getStyleClass().add("mode-button-right");
+        btnSplit.setOnAction(e -> setViewMode(ViewMode.SPLIT));
+        
+        modeSwitcher.getChildren().addAll(btnRead, btnWrite, btnSplit);
+        updateModeSwitcherState();
+        
+        return modeSwitcher;
+    }
+
     private HBox createToolBar() {
-        Button btnNew = new Button("📄 Yeni Not");
-        btnNew.setOnAction(e -> clearEditor());
-        styleButton(btnNew, "btn-new");
-
-        Button btnNewFolder = new Button("📁 Yeni Klasör");
-        btnNewFolder.setOnAction(e -> createNewFolder());
-        styleButton(btnNewFolder, "btn-new");
-
         // Spacer
         javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        btnPreview = new Button("👁 Önizleme");
-        btnPreview.setOnAction(e -> togglePreview());
-        styleButton(btnPreview, "btn-preview");
+        HBox modeSwitch = createModeSwitcher();
 
-        Button btnSync = new Button("🔄 Senkronize Et");
+        Button btnSync = new Button("Senkronize Et");
         btnSync.setOnAction(e -> syncNotes());
-        styleButton(btnSync, "btn-sync");
+        styleButton(btnSync, "btn-toolbar");
 
-        Button btnSettings = new Button("⚙ Ayarlar");
+        Button btnSettings = new Button("Ayarlar");
         btnSettings.setOnAction(e -> openSettings());
-        styleButton(btnSettings, "btn-settings");
+        styleButton(btnSettings, "btn-toolbar");
 
-        HBox toolbar = new HBox(10);
+        HBox toolbar = new HBox(15);
         toolbar.getStyleClass().add("tool-bar-container");
         toolbar.setAlignment(Pos.CENTER_LEFT);
         
-        toolbar.getChildren().addAll(btnNew, btnNewFolder, spacer, btnPreview, btnSync, btnSettings);
+        toolbar.getChildren().addAll(modeSwitch, spacer, btnSync, btnSettings);
         return toolbar;
     }
 
@@ -384,12 +490,20 @@ public class App extends Application {
             insertTextAtCursor(prefix + suffix);
         } else {
             editorArea.replaceSelection(prefix + selected + suffix);
+            // Force update preview if in split mode
+            if (currentMode == ViewMode.SPLIT) {
+                updatePreview(editorArea.getText());
+            }
         }
     }
 
     private void insertTextAtCursor(String text) {
         int caret = editorArea.getCaretPosition();
         editorArea.insertText(caret, text);
+        // Force update preview if in split mode
+        if (currentMode == ViewMode.SPLIT) {
+            updatePreview(editorArea.getText());
+        }
     }
 
     private void collapseAll() {
@@ -525,14 +639,17 @@ public class App extends Application {
     private void togglePreview() {
         isPreviewOpen = !isPreviewOpen;
         if (isPreviewOpen) {
-            splitPane.getItems().add(previewArea);
+            if (!splitPane.getItems().contains(previewPanel)) {
+                splitPane.getItems().add(previewPanel);
+            }
             splitPane.setDividerPositions(0.5);
             updatePreview(editorArea.getText());
             btnPreview.setStyle("-fx-background-color: #3e4451; -fx-text-fill: white;");
         } else {
-            splitPane.getItems().remove(previewArea);
+            splitPane.getItems().remove(previewPanel);
             btnPreview.setStyle(""); // Reset to default style class
         }
+        updatePreviewStatus();
     }
 
     private void styleButton(Button btn, String styleClass) {
@@ -564,7 +681,7 @@ public class App extends Application {
                 "<link href='https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap' rel='stylesheet'>" +
                 "<style>" +
                 "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: #282c34; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
-                "h1, h2, h3 { color: #e06c75; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; }" +
+                "h1, h2, h3 { color: #e06c75; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #98c379; font-size: 0.9em; }" +
                 "pre { background-color: #21252b; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #181a1f; }" +
@@ -580,13 +697,15 @@ public class App extends Application {
                 "li { margin-bottom: 5px; }" +
                 "</style></head><body>" + html + "</body></html>";
         previewArea.getEngine().loadContent(styledHtml);
+        updatePreviewStatus();
     }
 
     private void loadNote(String filename) {
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
             titleField.setText(note.getFilename());
             editorArea.setText(note.getContent());
-            if (isPreviewOpen) updatePreview(note.getContent());
+            updateEditorStats(note.getContent());
+            setViewMode(ViewMode.READING); // Default to Reading mode on load
         }));
     }
 
@@ -600,7 +719,13 @@ public class App extends Application {
         noteService.saveNote(note).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
             if (!silent) showAlert("Başarılı", "Not kaydedildi.");
-        }));
+        })).exceptionally(e -> {
+            Platform.runLater(() -> {
+                statusLabel.setText("Kaydedilemedi!");
+                if (!silent) showAlert("Hata", "Not kaydedilemedi: " + e.getMessage());
+            });
+            return null;
+        });
     }
     
     private void saveNote() {
@@ -637,10 +762,16 @@ public class App extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        previewStatusLabel = new Label("");
+        previewStatusLabel.getStyleClass().add("status-label"); // Use status-label style
+
+        editorStatsLabel = new Label("0 kelime  •  0 karakter");
+        editorStatsLabel.getStyleClass().add("status-label");
+
         Label branchLabel = new Label("main*"); // Mock branch name
         branchLabel.getStyleClass().add("status-branch");
 
-        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, branchLabel);
+        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
         return statusBar;
     }
 
@@ -703,13 +834,98 @@ public class App extends Application {
         noteService.getNotes().thenAccept(notes -> Platform.runLater(() -> {
             allNotes = notes; // Cache for search
             buildTreeFromList(notes);
-        }));
+        })).exceptionally(e -> {
+            Platform.runLater(() -> {
+                statusLabel.setText("Bağlantı Hatası!");
+                // Optional: Show a placeholder in the tree view
+                TreeItem<String> errorRoot = new TreeItem<>("Bağlantı Hatası");
+                noteTreeView.setRoot(errorRoot);
+            });
+            return null;
+        });
     }
 
     private void clearEditor() {
         titleField.clear();
         editorArea.clear();
         noteTreeView.getSelectionModel().clearSelection();
+        updateEditorStats("");
+        setViewMode(ViewMode.WRITING); // Default to Writing mode for new note
+    }
+
+    private VBox createEditorPanel() {
+        VBox container = new VBox();
+        container.getStyleClass().add("editor-panel");
+
+        HBox header = new HBox(10);
+        header.getStyleClass().add("panel-header");
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        Label badge = new Label("MD");
+        badge.getStyleClass().add("panel-badge");
+
+        Label title = new Label("Markdown Editör");
+        title.getStyleClass().add("panel-title");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        // Stats moved to status bar
+
+        header.getChildren().addAll(badge, title, spacer);
+
+        StackPane editorBody = new StackPane(editorArea);
+        editorBody.getStyleClass().add("panel-body");
+        StackPane.setAlignment(editorArea, Pos.TOP_LEFT);
+
+        VBox.setVgrow(editorBody, Priority.ALWAYS);
+        container.getChildren().addAll(header, editorBody);
+        return container;
+    }
+
+    private VBox createPreviewPanel() {
+        VBox container = new VBox();
+        container.getStyleClass().add("preview-panel");
+
+        HBox header = new HBox(10);
+        header.getStyleClass().add("panel-header");
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        Label badge = new Label("PRV");
+        badge.getStyleClass().add("panel-badge");
+
+        Label title = new Label("Markdown Önizleme");
+        title.getStyleClass().add("panel-title");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        header.getChildren().addAll(badge, title, spacer);
+
+        previewArea.getStyleClass().add("preview-area");
+        StackPane previewBody = new StackPane(previewArea);
+        previewBody.getStyleClass().add("panel-body");
+        VBox.setVgrow(previewBody, Priority.ALWAYS);
+        container.getChildren().addAll(header, previewBody);
+        return container;
+    }
+
+    private void updateEditorStats(String text) {
+        if (editorStatsLabel == null) return;
+        String safeText = text == null ? "" : text;
+        String trimmed = safeText.trim();
+        int wordCount = trimmed.isEmpty() ? 0 : trimmed.split("\\s+").length;
+        int charCount = safeText.length();
+        editorStatsLabel.setText(wordCount + " kelime  •  " + charCount + " karakter");
+    }
+
+    private void updatePreviewStatus() {
+        if (previewStatusLabel == null) return;
+        if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) {
+            previewStatusLabel.setText("Canlı • " + LocalTime.now().format(TIME_FORMATTER));
+        } else {
+            previewStatusLabel.setText("Kapalı");
+        }
     }
 
     private void showAlert(String title, String content) {

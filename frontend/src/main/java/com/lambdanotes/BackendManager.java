@@ -33,16 +33,26 @@ public class BackendManager {
             
             backendProcess = pb.start();
             
+            // Check if it died immediately
+            try {
+                Thread.sleep(500);
+                if (!backendProcess.isAlive()) {
+                    System.err.println("Backend process exited immediately with code: " + backendProcess.exitValue());
+                }
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+
             // Consume output in a separate thread to prevent blocking if buffer fills up
             new Thread(() -> {
                 try (java.io.BufferedReader reader = new java.io.BufferedReader(
                         new java.io.InputStreamReader(backendProcess.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        // System.out.println("Backend: " + line); // Optional logging
+                        System.out.println("Backend: " + line); 
                     }
                 } catch (IOException e) {
-                    // Ignore
+                    e.printStackTrace();
                 }
             }).start();
 
@@ -78,6 +88,10 @@ public class BackendManager {
         
         File devExe2 = Paths.get(appDir, "..", "backend", "backend.exe").toFile();
         if (devExe2.exists()) return devExe2.getAbsolutePath();
+
+        // 4. Look in backend/ (Run from root)
+        File rootDevExe = new File(appDir, "backend/backend.exe");
+        if (rootDevExe.exists()) return rootDevExe.getAbsolutePath();
 
         return null;
     }
