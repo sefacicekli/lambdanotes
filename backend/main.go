@@ -67,6 +67,15 @@ type GithubTokenResponse struct {
 }
 
 func main() {
+	// Setup logging
+	logFile, err := os.OpenFile("backend.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Error opening log file:", err)
+	} else {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
+
 	fmt.Println("Starting backend...")
 	loadConfig()
 

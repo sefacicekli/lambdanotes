@@ -39,8 +39,18 @@ import javafx.scene.input.MouseEvent;
 import javafx.event.EventType;
 import javafx.stage.Screen;
 import javafx.geometry.Rectangle2D;
+import java.util.logging.FileHandler;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
+import java.util.logging.Level;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class App extends Application {
+
+    private static final Logger logger = Logger.getLogger(App.class.getName());
 
     private NoteService noteService;
     private TreeView<String> noteTreeView;
@@ -85,6 +95,7 @@ public class App extends Application {
 
     @Override
     public void start(Stage stage) {
+        setupLogging();
         // Start Backend
         backendManager = new BackendManager();
         backendManager.startBackend();
@@ -262,6 +273,26 @@ public class App extends Application {
 
         // Check for Updates
         checkForUpdates();
+    }
+
+    private void setupLogging() {
+        try {
+            String userHome = System.getProperty("user.home");
+            Path logDir = Paths.get(userHome, ".lambdanotes");
+            if (!Files.exists(logDir)) {
+                Files.createDirectories(logDir);
+            }
+            Path logFile = logDir.resolve("application.log");
+
+            FileHandler fileHandler = new FileHandler(logFile.toString(), true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            Logger rootLogger = Logger.getLogger("");
+            rootLogger.addHandler(fileHandler);
+            rootLogger.setLevel(Level.INFO);
+            logger.info("Logging initialized. Log file: " + logFile);
+        } catch (IOException e) {
+            System.err.println("Failed to setup logger: " + e.getMessage());
+        }
     }
 
     private void checkForUpdates() {
@@ -837,20 +868,50 @@ public class App extends Application {
         loadingOverlay.getChildren().addAll(pi, loadingLabel);
         rootStack.getChildren().add(loadingOverlay);
         
-        noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
-            refreshNoteList();
-            statusLabel.setText("Hazır");
-            syncSpinner.setVisible(false);
-            rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-            showNotification("Senkronizasyon Tamamlandı", "https://github.com/sefacicekli/devopsnotes");
-        })).exceptionally(e -> {
-            Platform.runLater(() -> {
-                statusLabel.setText("Hata");
+        noteService.getConfig().thenAccept(config -> {
+            String repoUrl = (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) 
+                             ? config.getRepoUrl() 
+                             : "https://github.com";
+
+            noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
+                refreshNoteList();
+                statusLabel.setText("Hazır");
                 syncSpinner.setVisible(false);
                 rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
+                showNotification("Senkronizasyon Tamamlandı", repoUrl);
+                logger.info("Sync completed successfully.");
+            })).exceptionally(e -> {
+                Platform.runLater(() -> {
+                    statusLabel.setText("Hata");
+                    syncSpinner.setVisible(false);
+                    rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
+                    showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
+                    logger.severe("Sync failed: " + e.getMessage());
+                });
+                return null;
             });
-            return null;
+        }).exceptionally(e -> {
+             Platform.runLater(() -> {
+                 // Config fetch failed, try sync anyway
+                 noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
+                    refreshNoteList();
+                    statusLabel.setText("Hazır");
+                    syncSpinner.setVisible(false);
+                    rootStack.getChildren().remove(loadingOverlay);
+                    showNotification("Senkronizasyon Tamamlandı", "https://github.com");
+                    logger.info("Sync completed successfully (config fetch failed).");
+                })).exceptionally(ex -> {
+                    Platform.runLater(() -> {
+                        statusLabel.setText("Hata");
+                        syncSpinner.setVisible(false);
+                        rootStack.getChildren().remove(loadingOverlay);
+                        showAlert("Hata", "Senkronizasyon hatası: " + ex.getMessage());
+                        logger.severe("Sync failed: " + ex.getMessage());
+                    });
+                    return null;
+                });
+             });
+             return null;
         });
     }
 

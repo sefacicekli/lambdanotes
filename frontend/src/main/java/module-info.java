@@ -4,6 +4,7 @@ module com.lambdanotes {
     requires javafx.web;
     requires java.desktop;
     requires java.net.http;
+    requires java.logging;
     requires com.google.gson;
     requires flexmark;
     requires flexmark.util.ast;
