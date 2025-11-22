@@ -235,22 +235,18 @@ public class App extends Application {
         titleField.setAlignment(Pos.CENTER_LEFT);
         titleField.getStyleClass().add("title-field");
 
-        // Header Pane (Title + Mode Switcher)
+        // Header Pane (Mode Switcher only)
         AnchorPane headerPane = new AnchorPane();
+        headerPane.setMinHeight(40); // Ensure some height
         
         HBox modeSwitch = createModeSwitcher();
-        
-        // Title Field fills the header
-        AnchorPane.setLeftAnchor(titleField, 0.0);
-        AnchorPane.setRightAnchor(titleField, 0.0);
-        AnchorPane.setTopAnchor(titleField, 0.0);
-        AnchorPane.setBottomAnchor(titleField, 0.0);
         
         // Mode Switcher at Top Right
         AnchorPane.setRightAnchor(modeSwitch, 10.0);
         AnchorPane.setTopAnchor(modeSwitch, 10.0);
+        AnchorPane.setBottomAnchor(modeSwitch, 5.0);
 
-        headerPane.getChildren().addAll(titleField, modeSwitch);
+        headerPane.getChildren().addAll(modeSwitch);
 
         splitPane = new SplitPane();
         splitPane.getStyleClass().add("main-split-pane");
@@ -270,9 +266,9 @@ public class App extends Application {
         setupEditorContextMenu();
 
         // Layout Listeners for Centering
+        // We will handle title styling inside updateEditorStyle now since they are together
         editorArea.widthProperty().addListener((obs, oldVal, newVal) -> updateEditorStyle());
-        titleField.widthProperty().addListener((obs, oldVal, newVal) -> updateTitleStyle());
-
+        
         // Sync Scrollbars after layout
         Platform.runLater(() -> {
             Set<Node> nodes = editorArea.lookupAll(".scroll-bar");
@@ -512,6 +508,8 @@ public class App extends Application {
         }
         updateModeSwitcherState();
         updatePreviewStatus();
+        // updateTitleStyle(); // Removed
+        updateEditorStyle(); // Update both
     }
 
     private void updateModeSwitcherState() {
@@ -810,27 +808,42 @@ public class App extends Application {
             if (show) {
                 updateLineNumbers();
             }
+            // updateTitleStyle(); // Removed
+            updateEditorStyle(); // Re-align editor and title
         }
     }
 
     private void updateEditorStyle() {
         if (editorArea == null) return;
         double width = editorArea.getWidth();
-        double hPadding = 20;
-        if (width > MAX_CONTENT_WIDTH) {
-            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        
+        // Calculate horizontal padding to center content
+        double hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        
+        // Ensure minimum padding is enough to clear the line numbers (50px) + some gap (20px)
+        if (hPadding < 70) {
+            hPadding = 70;
         }
+        
+        // Apply to Editor
+        // Note: We removed .content padding in CSS to ensure exact alignment
         editorArea.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+        
+        // Apply to Title Field (if it exists)
+        if (titleField != null) {
+            // Title field might need a tiny adjustment depending on the font/control, 
+            // but usually 0-padding on editor content makes them match closely.
+            // If title is still to the left, we might need to add a few pixels here.
+            // Let's add a small buffer (e.g. 5px) to both to be safe and consistent, 
+            // or just rely on the padding.
+            // Let's try exact match first.
+            titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+        }
     }
 
+    // updateTitleStyle is no longer needed as it's handled in updateEditorStyle
     private void updateTitleStyle() {
-        if (titleField == null) return;
-        double width = titleField.getWidth();
-        double hPadding = 0;
-        if (width > MAX_CONTENT_WIDTH) {
-            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
-        }
-        titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+        // Deprecated
     }
 
     private void updatePreview(String markdown) {
@@ -1180,15 +1193,20 @@ public class App extends Application {
         lineNumbers.setMaxWidth(50);
         // Hide scrollbar for line numbers
         lineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
+        lineNumbers.setMouseTransparent(true); // Allow clicks to pass through to editor
 
-        HBox editorBox = new HBox(lineNumbers, editorArea);
-        HBox.setHgrow(editorArea, Priority.ALWAYS);
+        // Use StackPane to overlay line numbers (z-index style)
+        StackPane editorStack = new StackPane();
+        editorStack.getChildren().addAll(editorArea, lineNumbers);
+        StackPane.setAlignment(lineNumbers, Pos.TOP_LEFT);
         
-        StackPane editorBody = new StackPane(editorBox);
+        StackPane editorBody = new StackPane(editorStack);
         editorBody.getStyleClass().add("panel-body");
-        
         VBox.setVgrow(editorBody, Priority.ALWAYS);
-        container.getChildren().addAll(editorBody);
+        
+        // Add TitleField to the top of the editor panel
+        // This ensures they share the same width context
+        container.getChildren().addAll(titleField, editorBody);
         return container;
     }
 

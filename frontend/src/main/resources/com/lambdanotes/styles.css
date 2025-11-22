@@ -421,6 +421,7 @@
 
 .editor-area .content {
     -fx-background-color: transparent;
+    -fx-padding: 0; /* Remove internal padding to align perfectly with title */
 }
 
 .editor-area:focused {
