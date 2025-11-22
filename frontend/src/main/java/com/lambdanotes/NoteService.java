@@ -25,12 +25,18 @@ public class NoteService {
     }
 
     public CompletableFuture<List<String>> getNotes() {
+        logger.info("Requesting notes from backend...");
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(API_URL + "/notes"))
                 .GET()
                 .build();
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    logger.info("GetNotes response code: " + response.statusCode());
+                    logger.info("GetNotes response body: " + response.body());
+                    return response;
+                })
                 .thenApply(HttpResponse::body)
                 .thenApply(body -> gson.fromJson(body, new TypeToken<List<String>>(){}.getType()));
     }

@@ -12,10 +12,16 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.scene.paint.Color;
+import javafx.stage.FileChooser;
 
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.io.File;
+import java.nio.file.Files;
+import java.io.IOException;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 public class SettingsDialog extends Stage {
 
@@ -39,10 +45,16 @@ public class SettingsDialog extends Stage {
     // Editor Settings Components
     private Slider fontSizeSlider;
     private Label fontSizeValueLabel;
+    private CheckBox showLineNumbersCheckBox;
+    
+    // Appearance Settings Components
+    private ComboBox<String> themeComboBox;
 
     // Views Cache
     private VBox githubView;
     private VBox editorView;
+    private VBox generalView;
+    private VBox appearanceView;
 
     public SettingsDialog(NoteService noteService, AppConfig currentConfig) {
         this.noteService = noteService;
@@ -71,6 +83,8 @@ public class SettingsDialog extends Stage {
         // Pre-create views to preserve state
         githubView = createGitHubSettingsView();
         editorView = createEditorSettingsView();
+        generalView = createGeneralSettingsView();
+        appearanceView = createAppearanceSettingsView();
 
         // Initial View
         switchView("GitHub");
@@ -110,7 +124,11 @@ public class SettingsDialog extends Stage {
                 contentArea.getChildren().add(editorView);
                 break;
             case "Genel":
+                contentArea.getChildren().add(generalView);
+                break;
             case "Görünüm":
+                contentArea.getChildren().add(appearanceView);
+                break;
             case "Hakkında":
                 Label placeholder = new Label(category + " ayarları yakında...");
                 placeholder.setStyle("-fx-text-fill: #7c7f88; -fx-font-size: 14px;");
@@ -119,6 +137,37 @@ public class SettingsDialog extends Stage {
         }
     }
 
+    private VBox createAppearanceSettingsView() {
+        VBox view = new VBox(20);
+        view.setAlignment(Pos.TOP_LEFT);
+
+        Label header = new Label("Görünüm Ayarları");
+        header.getStyleClass().add("settings-header-label");
+
+        // Theme Section
+        VBox themeSection = new VBox(10);
+        Label themeLabel = new Label("Tema");
+        themeLabel.getStyleClass().add("settings-section-label");
+
+        themeComboBox = new ComboBox<>();
+        themeComboBox.getItems().addAll("Dark", "Light");
+        themeComboBox.setMaxWidth(200);
+        themeComboBox.getStyleClass().add("settings-combo-box");
+        
+        if (currentConfig != null && currentConfig.getTheme() != null) {
+            themeComboBox.getSelectionModel().select(currentConfig.getTheme());
+        } else {
+            themeComboBox.getSelectionModel().select("Dark");
+        }
+
+        Label themeHint = new Label("Uygulama temasını değiştirin.");
+        themeHint.getStyleClass().add("settings-hint-label");
+
+        themeSection.getChildren().addAll(themeLabel, themeComboBox, themeHint);
+
+        view.getChildren().addAll(header, themeSection);
+        return view;
+    }
 
     private VBox createEditorSettingsView() {
         VBox view = new VBox(20);
@@ -157,7 +206,22 @@ public class SettingsDialog extends Stage {
         sliderBox.getChildren().addAll(fontSizeSlider, fontSizeValueLabel);
         fontSection.getChildren().addAll(fontLabel, sliderBox);
 
-        view.getChildren().addAll(header, fontSection);
+        // Line Numbers Section
+        VBox lineNumbersSection = new VBox(10);
+        Label lineNumbersLabel = new Label("Görünüm");
+        lineNumbersLabel.getStyleClass().add("settings-section-label");
+
+        showLineNumbersCheckBox = new CheckBox("Satır Numaralarını Göster");
+        showLineNumbersCheckBox.setStyle("-fx-text-fill: #dfe1e5;");
+        if (currentConfig != null) {
+            showLineNumbersCheckBox.setSelected(currentConfig.isShowLineNumbers());
+        } else {
+            showLineNumbersCheckBox.setSelected(true);
+        }
+
+        lineNumbersSection.getChildren().addAll(lineNumbersLabel, showLineNumbersCheckBox);
+
+        view.getChildren().addAll(header, fontSection, new Separator(), lineNumbersSection);
         return view;
     }
 
@@ -258,6 +322,38 @@ public class SettingsDialog extends Stage {
         return view;
     }
 
+    private VBox createGeneralSettingsView() {
+        VBox view = new VBox(20);
+        view.setAlignment(Pos.TOP_LEFT);
+
+        Label header = new Label("Genel Ayarlar");
+        header.getStyleClass().add("settings-header-label");
+
+        // Config Management Section
+        VBox configSection = new VBox(10);
+        Label configLabel = new Label("Yapılandırma Yönetimi");
+        configLabel.getStyleClass().add("settings-section-label");
+
+        Label hintLabel = new Label("Ayarlarınızı yedeklemek veya başka bir cihaza taşımak için dışa aktarabilirsiniz.");
+        hintLabel.getStyleClass().add("settings-hint-label");
+
+        HBox buttonBox = new HBox(10);
+        
+        Button btnImport = new Button("Ayarları İçe Aktar");
+        btnImport.getStyleClass().add("dialog-button-secondary");
+        btnImport.setOnAction(e -> importSettings());
+
+        Button btnExport = new Button("Ayarları Dışa Aktar");
+        btnExport.getStyleClass().add("dialog-button-secondary");
+        btnExport.setOnAction(e -> exportSettings());
+
+        buttonBox.getChildren().addAll(btnImport, btnExport);
+        configSection.getChildren().addAll(configLabel, hintLabel, buttonBox);
+
+        view.getChildren().addAll(header, configSection);
+        return view;
+    }
+
     private HBox createFooter() {
         HBox footer = new HBox(10);
         footer.getStyleClass().add("settings-footer");
@@ -281,6 +377,7 @@ public class SettingsDialog extends Stage {
         String username = (currentConfig != null) ? currentConfig.getUsername() : "";
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (currentConfig != null) ? currentConfig.getEditorFontSize() : 16;
+        String theme = (currentConfig != null && currentConfig.getTheme() != null) ? currentConfig.getTheme() : "Dark";
 
         // Update from UI
         if (tokenField != null && !tokenField.getText().isEmpty()) {
@@ -299,9 +396,20 @@ public class SettingsDialog extends Stage {
         if (fontSizeSlider != null) {
             fontSize = (int) fontSizeSlider.getValue();
         }
+        
+        boolean showLineNumbers = true;
+        if (showLineNumbersCheckBox != null) {
+            showLineNumbers = showLineNumbersCheckBox.isSelected();
+        }
+        
+        if (themeComboBox != null && themeComboBox.getValue() != null) {
+            theme = themeComboBox.getValue();
+        }
 
         result = new AppConfig(repoUrl, token, username, email);
         result.setEditorFontSize(fontSize);
+        result.setShowLineNumbers(showLineNumbers);
+        result.setTheme(theme);
         
         close();
     }
@@ -434,6 +542,97 @@ public class SettingsDialog extends Stage {
                 Platform.runLater(() -> statusLabel.setText("Polling hatası: " + e.getMessage()));
             }
         }).start();
+    }
+
+    private void importSettings() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Ayarları İçe Aktar");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON Dosyaları", "*.json"));
+        File file = fileChooser.showOpenDialog(this);
+
+        if (file != null) {
+            try {
+                String json = new String(Files.readAllBytes(file.toPath()));
+                Gson gson = new Gson();
+                AppConfig importedConfig = gson.fromJson(json, AppConfig.class);
+                
+                // Update UI with imported config
+                if (importedConfig != null) {
+                    if (importedConfig.getToken() != null) tokenField.setText(importedConfig.getToken());
+                    if (fontSizeSlider != null) fontSizeSlider.setValue(importedConfig.getEditorFontSize());
+                    if (showLineNumbersCheckBox != null) showLineNumbersCheckBox.setSelected(importedConfig.isShowLineNumbers());
+                    if (themeComboBox != null && importedConfig.getTheme() != null) themeComboBox.getSelectionModel().select(importedConfig.getTheme());
+                    
+                    // Reload repos if token is present
+                    if (importedConfig.getToken() != null && !importedConfig.getToken().isEmpty()) {
+                        loadRepos();
+                    }
+                    
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Başarılı");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Ayarlar başarıyla içe aktarıldı. Kaydetmek için 'Tamam'a basın.");
+                    alert.showAndWait();
+                }
+            } catch (IOException e) {
+                logger.log(Level.SEVERE, "Failed to import settings", e);
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Hata");
+                alert.setHeaderText(null);
+                alert.setContentText("Ayarlar içe aktarılamadı: " + e.getMessage());
+                alert.showAndWait();
+            }
+        }
+    }
+
+    private void exportSettings() {
+        // Create current config state for export
+        String repoUrl = (currentConfig != null) ? currentConfig.getRepoUrl() : "";
+        String token = (currentConfig != null) ? currentConfig.getToken() : "";
+        String username = (currentConfig != null) ? currentConfig.getUsername() : "";
+        String email = (currentConfig != null) ? currentConfig.getEmail() : "";
+        int fontSize = (int) fontSizeSlider.getValue();
+        boolean showLineNumbers = showLineNumbersCheckBox.isSelected();
+        String theme = themeComboBox.getValue();
+
+        if (tokenField != null && !tokenField.getText().isEmpty()) {
+            token = tokenField.getText();
+        }
+        if (repoComboBox != null && repoComboBox.getValue() != null) {
+            repoUrl = repoComboBox.getValue().getCloneUrl();
+        }
+
+        AppConfig configToExport = new AppConfig(repoUrl, token, username, email);
+        configToExport.setEditorFontSize(fontSize);
+        configToExport.setShowLineNumbers(showLineNumbers);
+        configToExport.setTheme(theme);
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Ayarları Dışa Aktar");
+        fileChooser.setInitialFileName("lambdanotes-config.json");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON Dosyaları", "*.json"));
+        File file = fileChooser.showSaveDialog(this);
+
+        if (file != null) {
+            try {
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                String json = gson.toJson(configToExport);
+                Files.write(file.toPath(), json.getBytes());
+                
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle("Başarılı");
+                alert.setHeaderText(null);
+                alert.setContentText("Ayarlar başarıyla dışa aktarıldı.");
+                alert.showAndWait();
+            } catch (IOException e) {
+                logger.log(Level.SEVERE, "Failed to export settings", e);
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Hata");
+                alert.setHeaderText(null);
+                alert.setContentText("Ayarlar dışa aktarılamadı: " + e.getMessage());
+                alert.showAndWait();
+            }
+        }
     }
 }
 

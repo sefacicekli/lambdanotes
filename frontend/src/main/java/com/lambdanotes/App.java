@@ -1,8 +1,10 @@
 package com.lambdanotes;
 
 import atlantafx.base.theme.PrimerDark;
+import atlantafx.base.theme.PrimerLight;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -16,6 +18,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.web.WebView;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.scene.layout.StackPane;
@@ -44,11 +47,18 @@ import java.util.logging.FileHandler;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.util.logging.Level;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import javafx.scene.text.Font;
+import javafx.scene.shape.SVGPath;
+import javafx.scene.control.ScrollBar;
+import javafx.geometry.Orientation;
+import java.util.Set;
+import javafx.scene.Node;
+import javafx.stage.Modality;
 
 public class App extends Application {
 
@@ -57,6 +67,7 @@ public class App extends Application {
     private NoteService noteService;
     private TreeView<String> noteTreeView;
     private TextArea editorArea;
+    private TextArea lineNumbers;
     private WebView previewArea;
     private TextField titleField;
     private Parser parser;
@@ -71,6 +82,7 @@ public class App extends Application {
     private Label viewModeLabel; // New label for footer
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
+    private boolean isSynced = true; // Track sync status
     
     private double currentEditorFontSize = 16;
     private static final double MAX_CONTENT_WIDTH = 900;
@@ -110,10 +122,10 @@ public class App extends Application {
         
         // Load Fonts
         try {
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Regular.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Bold.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Italic.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-BoldItalic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-BoldItalic.ttf"), 10);
         } catch (Exception e) {
             logger.warning("Could not load fonts: " + e.getMessage());
         }
@@ -226,22 +238,18 @@ public class App extends Application {
         titleField.setAlignment(Pos.CENTER_LEFT);
         titleField.getStyleClass().add("title-field");
 
-        // Header Pane (Title + Mode Switcher)
+        // Header Pane (Mode Switcher only)
         AnchorPane headerPane = new AnchorPane();
+        headerPane.setMinHeight(40); // Ensure some height
         
         HBox modeSwitch = createModeSwitcher();
-        
-        // Title Field fills the header
-        AnchorPane.setLeftAnchor(titleField, 0.0);
-        AnchorPane.setRightAnchor(titleField, 0.0);
-        AnchorPane.setTopAnchor(titleField, 0.0);
-        AnchorPane.setBottomAnchor(titleField, 0.0);
         
         // Mode Switcher at Top Right
         AnchorPane.setRightAnchor(modeSwitch, 10.0);
         AnchorPane.setTopAnchor(modeSwitch, 10.0);
+        AnchorPane.setBottomAnchor(modeSwitch, 5.0);
 
-        headerPane.getChildren().addAll(titleField, modeSwitch);
+        headerPane.getChildren().addAll(modeSwitch);
 
         splitPane = new SplitPane();
         splitPane.getStyleClass().add("main-split-pane");
@@ -249,10 +257,11 @@ public class App extends Application {
         editorArea = new TextArea();
         editorArea.setPromptText("Markdown yazmaya başla...");
         editorArea.getStyleClass().add("editor-area");
-        editorArea.setWrapText(true); // Infinite canvas feel (wrapping)
+        editorArea.setWrapText(false); // Disable wrap for code editor feel and line number sync
         editorArea.textProperty().addListener((obs, oldVal, newVal) -> {
             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) updatePreview(newVal);
             updateEditorStats(newVal);
+            updateLineNumbers();
             autoSaveTimer.playFromStart(); // Reset timer on change
         });
         
@@ -260,8 +269,25 @@ public class App extends Application {
         setupEditorContextMenu();
 
         // Layout Listeners for Centering
+        // We will handle title styling inside updateEditorStyle now since they are together
         editorArea.widthProperty().addListener((obs, oldVal, newVal) -> updateEditorStyle());
-        titleField.widthProperty().addListener((obs, oldVal, newVal) -> updateTitleStyle());
+        
+        // Sync Scrollbars after layout
+        Platform.runLater(() -> {
+            Set<Node> nodes = editorArea.lookupAll(".scroll-bar");
+            for (Node node : nodes) {
+                if (node instanceof ScrollBar) {
+                    ScrollBar sb = (ScrollBar) node;
+                    if (sb.getOrientation() == Orientation.VERTICAL) {
+                        sb.valueProperty().addListener((obs, oldVal, newVal) -> {
+                            if (lineNumbers != null) {
+                                lineNumbers.setScrollTop(editorArea.getScrollTop());
+                            }
+                        });
+                    }
+                }
+            }
+        });
 
         previewArea = new WebView();
         previewArea.setPageFill(Color.TRANSPARENT);
@@ -424,7 +450,7 @@ public class App extends Application {
 
         Button btnClose = new Button("✕");
         btnClose.getStyleClass().add("window-button-close");
-        btnClose.setOnAction(e -> stage.close());
+        btnClose.setOnAction(e -> requestClose(stage));
 
         titleBar.getChildren().addAll(titleLabel, spacer, btnSync, btnSettings, btnMinimize, btnMaximize, btnClose);
 
@@ -485,6 +511,8 @@ public class App extends Application {
         }
         updateModeSwitcherState();
         updatePreviewStatus();
+        // updateTitleStyle(); // Removed
+        updateEditorStyle(); // Update both
     }
 
     private void updateModeSwitcherState() {
@@ -772,43 +800,77 @@ public class App extends Application {
 
     private void applySettings(AppConfig config) {
         if (config == null) return;
+        
+        if (config.getTheme() != null) {
+            applyTheme(config.getTheme());
+        }
+        
         if (editorArea != null) {
             currentEditorFontSize = config.getEditorFontSize();
             updateEditorStyle();
+        }
+        if (lineNumbers != null) {
+            boolean show = config.isShowLineNumbers();
+            lineNumbers.setVisible(show);
+            lineNumbers.setManaged(show);
+            if (show) {
+                updateLineNumbers();
+            }
+            // updateTitleStyle(); // Removed
+            updateEditorStyle(); // Re-align editor and title
         }
     }
 
     private void updateEditorStyle() {
         if (editorArea == null) return;
         double width = editorArea.getWidth();
-        double hPadding = 20;
-        if (width > MAX_CONTENT_WIDTH) {
-            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        
+        // Calculate horizontal padding to center content
+        double hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+        
+        // Ensure minimum padding is enough to clear the line numbers (50px) + some gap (20px)
+        if (hPadding < 70) {
+            hPadding = 70;
         }
+        
+        // Apply to Editor
+        // Note: We removed .content padding in CSS to ensure exact alignment
         editorArea.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+        
+        // Apply to Title Field (if it exists)
+        if (titleField != null) {
+            // Title field might need a tiny adjustment depending on the font/control, 
+            // but usually 0-padding on editor content makes them match closely.
+            // If title is still to the left, we might need to add a few pixels here.
+            // Let's add a small buffer (e.g. 5px) to both to be safe and consistent, 
+            // or just rely on the padding.
+            // Let's try exact match first.
+            titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+        }
     }
 
+    // updateTitleStyle is no longer needed as it's handled in updateEditorStyle
     private void updateTitleStyle() {
-        if (titleField == null) return;
-        double width = titleField.getWidth();
-        double hPadding = 0;
-        if (width > MAX_CONTENT_WIDTH) {
-            hPadding = (width - MAX_CONTENT_WIDTH) / 2;
-        }
-        titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+        // Deprecated
     }
 
     private void updatePreview(String markdown) {
         String html = renderer.render(parser.parse(markdown));
         
         // Get font URL for WebView
-        String fontUrl = getClass().getResource("fonts/Roboto-Regular.ttf").toExternalForm();
+        String fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
+        String fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
+        String fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
+        String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
         
         String styledHtml = "<html><head>" +
                 "<style>" +
-                "@font-face { font-family: 'Roboto'; src: url('" + fontUrl + "'); }" +
-                "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
-                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
+                "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
+                "body { font-family: 'JetBrains Mono', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: #abb2bf; font-weight: bold; }" +
                 "code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #98c379; font-size: 0.9em; }" +
@@ -833,6 +895,7 @@ public class App extends Application {
             mainLayout.setCenter(mainContent); // Switch to content view
             titleField.setText(note.getFilename());
             editorArea.setText(note.getContent());
+            updateLineNumbers();
             updateEditorStats(note.getContent());
             setViewMode(ViewMode.READING); // Default to Reading mode on load
         }));
@@ -847,6 +910,8 @@ public class App extends Application {
         Note note = new Note(title, editorArea.getText());
         noteService.saveNote(note).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
+            isSynced = false; // Mark as unsaved/unsynced
+            statusLabel.setText("Kaydedildi (Senkronize Edilmedi)");
             if (!silent) showAlert("Başarılı", "Not kaydedildi.");
         })).exceptionally(e -> {
             Platform.runLater(() -> {
@@ -873,6 +938,41 @@ public class App extends Application {
     
     private void deleteNote() {
         deleteNote(noteTreeView.getSelectionModel().getSelectedItem());
+    }
+
+    private void exportToPdf(TreeItem<String> item) {
+        if (item == null || !item.isLeaf()) return;
+        String filename = buildPath(item);
+        
+        noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("PDF Olarak Kaydet");
+            fileChooser.setInitialFileName(note.getFilename().replace(".md", ".pdf"));
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Dosyası", "*.pdf"));
+            File file = fileChooser.showSaveDialog(mainLayout.getScene().getWindow());
+            
+            if (file != null) {
+                try {
+                    String html = renderer.render(parser.parse(note.getContent()));
+                    // Add basic styling for PDF
+                    String styledHtml = "<html><head><style>" +
+                        "body { font-family: 'Arial', sans-serif; font-size: 12pt; line-height: 1.5; }" +
+                        "h1, h2, h3 { color: #333; }" +
+                        "code { background-color: #f0f0f0; padding: 2px 4px; }" +
+                        "pre { background-color: #f0f0f0; padding: 10px; white-space: pre-wrap; }" +
+                        "table { border-collapse: collapse; width: 100%; }" +
+                        "th, td { border: 1px solid #ddd; padding: 8px; }" +
+                        "th { background-color: #f2f2f2; }" +
+                        "</style></head><body>" + html + "</body></html>";
+
+                    PdfConverterExtension.exportToPdf(file.getAbsolutePath(), styledHtml, "", parser.getOptions());
+                    showNotification("Başarılı", "PDF başarıyla oluşturuldu.", NotificationType.SUCCESS, "Aç", () -> getHostServices().showDocument(file.getAbsolutePath()));
+                } catch (Exception e) {
+                    showAlert("Hata", "PDF oluşturulurken hata oluştu: " + e.getMessage());
+                    logger.log(Level.SEVERE, "PDF export failed", e);
+                }
+            }
+        }));
     }
 
     private HBox createStatusBar() {
@@ -992,6 +1092,10 @@ public class App extends Application {
     }
 
     private void syncNotes() {
+        syncNotes(null);
+    }
+
+    private void syncNotes(Runnable onSuccess) {
         statusLabel.setText("Senkronize ediliyor...");
         syncSpinner.setVisible(true);
         
@@ -1014,19 +1118,26 @@ public class App extends Application {
 
             noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                 refreshNoteList();
+                isSynced = true; // Mark as synced
                 statusLabel.setText("Hazır");
                 syncSpinner.setVisible(false);
                 rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                showNotification(
-                    "Senkronizasyon Başarılı", 
-                    "Notlar başarıyla senkronize edildi.", 
-                    NotificationType.SUCCESS, 
-                    "Repo'yu Aç", 
-                    () -> getHostServices().showDocument(repoUrl)
-                );
+                
+                if (onSuccess != null) {
+                    onSuccess.run();
+                } else {
+                    showNotification(
+                        "Senkronizasyon Başarılı", 
+                        "Notlar başarıyla senkronize edildi.", 
+                        NotificationType.SUCCESS, 
+                        "Repo'yu Aç", 
+                        () -> getHostServices().showDocument(repoUrl)
+                    );
+                }
                 logger.info("Sync completed successfully.");
             })).exceptionally(e -> {
                 Platform.runLater(() -> {
+                    refreshNoteList(); // Sync failed, but still load local notes
                     statusLabel.setText("Hata");
                     syncSpinner.setVisible(false);
                     rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
@@ -1040,19 +1151,26 @@ public class App extends Application {
                  // Config fetch failed, try sync anyway
                  noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                     refreshNoteList();
+                    isSynced = true; // Mark as synced
                     statusLabel.setText("Hazır");
                     syncSpinner.setVisible(false);
                     rootStack.getChildren().remove(loadingOverlay);
-                    showNotification(
-                        "Senkronizasyon Başarılı", 
-                        "Notlar başarıyla senkronize edildi.", 
-                        NotificationType.SUCCESS, 
-                        "GitHub'ı Aç", 
-                        () -> getHostServices().showDocument("https://github.com")
-                    );
+                    
+                    if (onSuccess != null) {
+                        onSuccess.run();
+                    } else {
+                        showNotification(
+                            "Senkronizasyon Başarılı", 
+                            "Notlar başarıyla senkronize edildi.", 
+                            NotificationType.SUCCESS, 
+                            "GitHub'ı Aç", 
+                            () -> getHostServices().showDocument("https://github.com")
+                        );
+                    }
                     logger.info("Sync completed successfully (config fetch failed).");
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {
+                        refreshNoteList(); // Sync failed, but still load local notes
                         statusLabel.setText("Hata");
                         syncSpinner.setVisible(false);
                         rootStack.getChildren().remove(loadingOverlay);
@@ -1067,10 +1185,13 @@ public class App extends Application {
     }
 
     private void refreshNoteList() {
+        logger.info("Refreshing note list...");
         noteService.getNotes().thenAccept(notes -> Platform.runLater(() -> {
+            logger.info("Notes received: " + (notes != null ? notes.size() : "null"));
             allNotes = notes; // Cache for search
             buildTreeFromList(notes);
         })).exceptionally(e -> {
+            logger.log(Level.SEVERE, "Failed to refresh note list", e);
             Platform.runLater(() -> {
                 statusLabel.setText("Bağlantı Hatası!");
                 // Optional: Show a placeholder in the tree view
@@ -1085,6 +1206,7 @@ public class App extends Application {
         mainLayout.setCenter(mainContent); // Switch to content view
         titleField.clear();
         editorArea.clear();
+        updateLineNumbers();
         noteTreeView.getSelectionModel().clearSelection();
         updateEditorStats("");
         setViewMode(ViewMode.WRITING); // Default to Writing mode for new note
@@ -1094,13 +1216,43 @@ public class App extends Application {
         VBox container = new VBox();
         container.getStyleClass().add("editor-panel");
 
-        StackPane editorBody = new StackPane(editorArea);
-        editorBody.getStyleClass().add("panel-body");
-        StackPane.setAlignment(editorArea, Pos.TOP_LEFT);
+        lineNumbers = new TextArea("1");
+        lineNumbers.setEditable(false);
+        lineNumbers.getStyleClass().add("line-numbers");
+        lineNumbers.setWrapText(false);
+        lineNumbers.setPrefWidth(50);
+        lineNumbers.setMinWidth(50);
+        lineNumbers.setMaxWidth(50);
+        // Hide scrollbar for line numbers
+        lineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
+        lineNumbers.setMouseTransparent(true); // Allow clicks to pass through to editor
 
+        // Use StackPane to overlay line numbers (z-index style)
+        StackPane editorStack = new StackPane();
+        editorStack.getChildren().addAll(editorArea, lineNumbers);
+        StackPane.setAlignment(lineNumbers, Pos.TOP_LEFT);
+        
+        StackPane editorBody = new StackPane(editorStack);
+        editorBody.getStyleClass().add("panel-body");
         VBox.setVgrow(editorBody, Priority.ALWAYS);
-        container.getChildren().addAll(editorBody);
+        
+        // Add TitleField to the top of the editor panel
+        // This ensures they share the same width context
+        container.getChildren().addAll(titleField, editorBody);
         return container;
+    }
+
+    private void updateLineNumbers() {
+        if (lineNumbers == null || editorArea == null) return;
+        String text = editorArea.getText();
+        if (text == null) text = "";
+        int lines = text.split("\n", -1).length;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= lines; i++) {
+            sb.append(i).append("\n");
+        }
+        lineNumbers.setText(sb.toString());
+        lineNumbers.setScrollTop(editorArea.getScrollTop());
     }
 
     private VBox createPreviewPanel() {
@@ -1140,6 +1292,19 @@ public class App extends Application {
         alert.setContentText(content);
         alert.showAndWait();
     }
+
+    private Node createIcon(String path, String color) {
+        SVGPath svg = new SVGPath();
+        svg.setContent(path);
+        svg.setFill(Color.web(color));
+        // Scale down if needed, but usually path should be sized correctly or scaled
+        svg.setScaleX(0.8);
+        svg.setScaleY(0.8);
+        return svg;
+    }
+
+    private static final String FOLDER_ICON = "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z";
+    private static final String FILE_ICON = "M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z";
 
     // Drag & Drop TreeCell Implementation
     private class DraggableTreeCell extends TreeCell<String> {
@@ -1204,19 +1369,30 @@ public class App extends Application {
                 setGraphic(null);
                 setContextMenu(null);
             } else {
-                setText(item);
+                // Show only filename, not full path
+                String displayName = item;
+                if (item.contains("/")) {
+                    displayName = item.substring(item.lastIndexOf("/") + 1);
+                }
+                setText(displayName);
+                
                 // İkon ekleyebiliriz: Klasör veya Dosya
                 if (getTreeItem().isLeaf()) {
-                    setGraphic(new Label("📄")); 
+                    setGraphic(createIcon(FILE_ICON, "#abb2bf")); 
                     
-                    // Context Menu for Delete
+                    // Context Menu
                     ContextMenu contextMenu = new ContextMenu();
+                    
+                    MenuItem exportPdfItem = new MenuItem("PDF Olarak Dışarı Aktar");
+                    exportPdfItem.setOnAction(e -> exportToPdf(getTreeItem()));
+                    
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
-                    contextMenu.getItems().add(deleteItem);
+                    
+                    contextMenu.getItems().addAll(exportPdfItem, new SeparatorMenuItem(), deleteItem);
                     setContextMenu(contextMenu);
                 } else {
-                    setGraphic(new Label("📁"));
+                    setGraphic(createIcon(FOLDER_ICON, "#d19a66"));
                     setContextMenu(null);
                 }
             }
@@ -1326,6 +1502,8 @@ public class App extends Application {
     }
 
     public static void main(String[] args) {
+        System.setProperty("prism.lcdtext", "false");
+        System.setProperty("prism.text", "t2k");
         launch(args);
     }
 
@@ -1335,5 +1513,112 @@ public class App extends Application {
             backendManager.stopBackend();
         }
         super.stop();
+    }
+
+    private void requestClose(Stage stage) {
+        if (isSynced) {
+            stage.close();
+        } else {
+            showExitConfirmation(stage);
+        }
+    }
+
+    private void showExitConfirmation(Stage ownerStage) {
+        Stage dialogStage = new Stage();
+        dialogStage.initOwner(ownerStage);
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+
+        VBox content = new VBox(20);
+        content.getStyleClass().add("custom-dialog");
+        content.setPadding(new Insets(20));
+        content.setPrefWidth(480); // Wider for 3 buttons
+        
+        Label header = new Label("Çıkış Onayı");
+        header.getStyleClass().add("dialog-header");
+        
+        Label message = new Label("Değişiklikler senkronize edilmedi. Ne yapmak istersiniz?");
+        message.setWrapText(true);
+        message.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 14px;");
+        
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        
+        // Result holder: 0=cancel, 1=exit, 2=sync&exit
+        final int[] result = {0};
+
+        Button btnCancel = new Button("İptal");
+        btnCancel.getStyleClass().add("dialog-button-cancel");
+        btnCancel.setOnAction(e -> {
+            result[0] = 0;
+            dialogStage.close();
+        });
+        
+        Button btnSyncAndExit = new Button("Senkronize Et ve Kapat");
+        btnSyncAndExit.getStyleClass().add("dialog-button-primary");
+        btnSyncAndExit.setOnAction(e -> {
+            result[0] = 2;
+            dialogStage.close();
+        });
+
+        Button btnExit = new Button("Kapat");
+        btnExit.getStyleClass().add("dialog-button-secondary");
+        btnExit.setStyle("-fx-background-color: #e06c75; -fx-text-fill: white; -fx-border-color: #e06c75;"); // Red for danger
+        btnExit.setOnAction(e -> {
+            result[0] = 1;
+            dialogStage.close();
+        });
+        
+        buttons.getChildren().addAll(btnCancel, btnSyncAndExit, btnExit);
+        content.getChildren().addAll(header, message, buttons);
+        
+        Scene scene = new Scene(content);
+        scene.setFill(Color.TRANSPARENT);
+        
+        // Apply current theme to dialog
+        if (ownerStage.getScene() != null) {
+             scene.getStylesheets().addAll(ownerStage.getScene().getStylesheets());
+        }
+        
+        dialogStage.setScene(scene);
+        
+        // Center on owner
+        dialogStage.setOnShown(e -> {
+            dialogStage.setX(ownerStage.getX() + (ownerStage.getWidth() - dialogStage.getWidth()) / 2);
+            dialogStage.setY(ownerStage.getY() + (ownerStage.getHeight() - dialogStage.getHeight()) / 2);
+        });
+        
+        // Enable dragging
+        final double[] xOffset = {0};
+        final double[] yOffset = {0};
+        content.setOnMousePressed(event -> {
+            xOffset[0] = event.getSceneX();
+            yOffset[0] = event.getSceneY();
+        });
+        content.setOnMouseDragged(event -> {
+            dialogStage.setX(event.getScreenX() - xOffset[0]);
+            dialogStage.setY(event.getScreenY() - yOffset[0]);
+        });
+
+        dialogStage.showAndWait();
+
+        if (result[0] == 1) { // Exit
+            ownerStage.close();
+        } else if (result[0] == 2) { // Sync and Exit
+            syncNotes(() -> ownerStage.close());
+        }
+    }
+
+    private void applyTheme(String theme) {
+        if (mainLayout == null || mainLayout.getScene() == null) return;
+        
+        mainLayout.getScene().getStylesheets().clear();
+        if ("Light".equals(theme)) {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("light_theme.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerLight().getUserAgentStylesheet());
+        } else {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+        }
     }
 }
