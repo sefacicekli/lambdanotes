@@ -1,10 +1,31 @@
 /* One Dark Pro Inspired Theme for LambdaNotes */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('fonts/JetBrainsMono-Regular.ttf');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-weight: bold;
+    src: url('fonts/JetBrainsMono-Bold.ttf');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: italic;
+    src: url('fonts/JetBrainsMono-Italic.ttf');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-weight: bold;
+    font-style: italic;
+    src: url('fonts/JetBrainsMono-BoldItalic.ttf');
+}
+
 .root {
     -fx-base: #282c34;
     -fx-background-color: #282c34;
     -fx-control-inner-background: #282c34;
     -fx-accent: #61afef;
-    -fx-font-family: "Roboto", "Segoe UI", "Helvetica", sans-serif;
+    -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", "Helvetica", sans-serif;
     -fx-font-size: 14px;
 }
 
@@ -40,7 +61,7 @@
     -fx-cursor: hand;
     -fx-padding: 6px 10px;
     -fx-border-width: 0;
-    -fx-font-family: "Roboto", "Segoe UI", sans-serif;
+    -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", sans-serif;
 }
 
 .btn-toolbar:hover {
@@ -92,7 +113,7 @@
 .window-title {
     -fx-text-fill: #9da5b4;
     -fx-font-size: 12px;
-    -fx-font-family: "Roboto", "Segoe UI", sans-serif;
+    -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", sans-serif;
 }
 
 .window-button {
@@ -167,7 +188,7 @@
 .menu-item .label {
     -fx-text-fill: #cdd6e3;
     -fx-font-size: 13px;
-    -fx-font-family: "Roboto", "Segoe UI", sans-serif;
+    -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", sans-serif;
 }
 
 .separator-menu-item .line {
@@ -380,7 +401,7 @@
     -fx-background-color: transparent;
     -fx-text-fill: #abb2bf;
     -fx-padding: 4px 8px;
-    -fx-font-family: "Segoe UI", sans-serif; /* Cleaner font for tree */
+    -fx-font-family: "JetBrains Mono", "Segoe UI", sans-serif; /* Cleaner font for tree */
     -fx-font-size: 13px;
 }
 
@@ -409,7 +430,7 @@
 }
 
 .editor-area {
-    -fx-font-family: "Roboto Mono", "Consolas", monospace;
+    -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
     -fx-font-size: 16px; /* Increased default size */
     -fx-background-color: transparent;
     -fx-text-fill: #abb2bf;
@@ -526,7 +547,7 @@
 .line-numbers {
     -fx-background-color: transparent;
     -fx-text-fill: #5c6370;
-    -fx-font-family: "Roboto Mono", "Consolas", monospace;
+    -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
     -fx-font-size: 16px;
     -fx-padding: 20 5 20 0;
     -fx-alignment: TOP-RIGHT;

@@ -122,10 +122,10 @@ public class App extends Application {
         
         // Load Fonts
         try {
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Regular.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Bold.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Italic.ttf"), 10);
-            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-BoldItalic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-BoldItalic.ttf"), 10);
         } catch (Exception e) {
             logger.warning("Could not load fonts: " + e.getMessage());
         }
@@ -858,13 +858,19 @@ public class App extends Application {
         String html = renderer.render(parser.parse(markdown));
         
         // Get font URL for WebView
-        String fontUrl = getClass().getResource("fonts/Roboto-Regular.ttf").toExternalForm();
+        String fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
+        String fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
+        String fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
+        String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
         
         String styledHtml = "<html><head>" +
                 "<style>" +
-                "@font-face { font-family: 'Roboto'; src: url('" + fontUrl + "'); }" +
-                "body { font-family: 'Roboto', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
-                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'Roboto', sans-serif; }" +
+                "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
+                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
+                "body { font-family: 'JetBrains Mono', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: #abb2bf; font-weight: bold; }" +
                 "code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #98c379; font-size: 0.9em; }" +
