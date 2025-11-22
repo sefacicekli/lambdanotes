@@ -2,6 +2,7 @@ package com.lambdanotes;
 
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
+import com.vladsch.flexmark.ext.tables.TablesExtension;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
@@ -29,6 +30,8 @@ import javafx.scene.layout.Region;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.util.Callback;
 import javafx.animation.PauseTransition;
 import javafx.util.Duration;
@@ -37,6 +40,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.stream.Collectors;
 import javafx.scene.Cursor;
 import javafx.scene.input.MouseEvent;
@@ -138,8 +142,12 @@ public class App extends Application {
         stage.initStyle(StageStyle.UNDECORATED); // Remove default OS window decorations
         
         noteService = new NoteService();
-        parser = Parser.builder().build();
-        renderer = HtmlRenderer.builder().build();
+        parser = Parser.builder()
+                .extensions(Arrays.asList(TablesExtension.create()))
+                .build();
+        renderer = HtmlRenderer.builder()
+                .extensions(Arrays.asList(TablesExtension.create()))
+                .build();
 
         // Auto-save timer (1 second delay)
         autoSaveTimer = new PauseTransition(Duration.seconds(1));
@@ -263,6 +271,15 @@ public class App extends Application {
             updateEditorStats(newVal);
             updateLineNumbers();
             autoSaveTimer.playFromStart(); // Reset timer on change
+        });
+
+        // Shift+Enter to insert new line
+        editorArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.ENTER && event.isShiftDown()) {
+                int caret = editorArea.getCaretPosition();
+                editorArea.insertText(caret, "\n");
+                event.consume();
+            }
         });
         
         // Editor Context Menu
@@ -864,6 +881,9 @@ public class App extends Application {
         String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
         
         String styledHtml = "<html><head>" +
+                "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css\">" +
+                "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>" +
+                "<script>hljs.highlightAll();</script>" +
                 "<style>" +
                 "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
@@ -873,9 +893,11 @@ public class App extends Application {
                 "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: #abb2bf; font-weight: bold; }" +
-                "code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Consolas', monospace; color: #98c379; font-size: 0.9em; }" +
-                "pre { background-color: #21252b; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #181a1f; }" +
-                "pre code { background-color: transparent; padding: 0; color: #abb2bf; }" +
+                "code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.9em; }" +
+                ":not(pre) > code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; color: #98c379; }" +
+                "pre { background-color: #282c34; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #181a1f; margin-top: 10px; }" +
+                "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
+                ".hljs { background: transparent !important; }" +
                 "blockquote { border-left: 4px solid #61afef; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
                 "a { color: #61afef; text-decoration: none; }" +
                 "a:hover { text-decoration: underline; }" +
