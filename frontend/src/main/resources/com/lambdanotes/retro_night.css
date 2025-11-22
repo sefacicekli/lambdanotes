@@ -1,4 +1,4 @@
-/* One Dark Pro Inspired Theme for LambdaNotes */
+/* Retro Night (Synthwave) Theme */
 @font-face {
     font-family: 'JetBrains Mono';
     src: url('fonts/JetBrainsMono-Regular.ttf');
@@ -21,40 +21,36 @@
 }
 
 .root {
-    -fx-base: #282c34;
-    -fx-background-color: #282c34;
-    -fx-control-inner-background: #282c34;
-    -fx-accent: #61afef;
+    -fx-base: #2b213a;
+    -fx-background-color: #2b213a;
+    -fx-control-inner-background: #2b213a;
+    -fx-accent: #ff7edb;
     -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", "Helvetica", sans-serif;
     -fx-font-size: 14px;
 }
 
 .root-stack {
-    -fx-background-color: linear-gradient(to bottom right, #090c12, #10141c 55%, #0d1117);
+    -fx-background-color: linear-gradient(to bottom right, #241b31, #2b213a);
 }
 
 .root-pane {
     -fx-background-color: transparent;
 }
 
-.top-shell {
-    -fx-padding: 10px 0 0 0; /* Reduced top padding, removed side padding */
-    -fx-spacing: 0;
-}
-
-/* Toolbar Styling - Professional & Minimal */
+/* Toolbar Styling */
 .tool-bar-container {
-    -fx-background-color: #1b1d23;
+    -fx-background-color: #241b31;
     -fx-padding: 8px 16px;
     -fx-spacing: 12px;
     -fx-alignment: CENTER_LEFT;
-    -fx-border-color: #181a1f;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 0 0 1px 0;
+    -fx-effect: dropshadow(gaussian, rgba(255, 126, 219, 0.4), 10, 0, 0, 1);
 }
 
 .btn-toolbar {
     -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
+    -fx-text-fill: #00e8f8;
     -fx-font-weight: normal;
     -fx-font-size: 13px;
     -fx-background-radius: 4px;
@@ -65,8 +61,9 @@
 }
 
 .btn-toolbar:hover {
-    -fx-background-color: #3e4451;
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.2);
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 /* Mode Switcher */
@@ -80,7 +77,7 @@
 
 .mode-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 12px;
     -fx-padding: 4px 12px;
     -fx-cursor: hand;
@@ -89,36 +86,40 @@
 }
 
 .mode-button:hover {
-    -fx-text-fill: white;
+    -fx-text-fill: #ff7edb;
     -fx-background-color: rgba(255,255,255,0.05);
 }
 
 .mode-button-active {
-    -fx-background-color: #3e4451;
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.2);
+    -fx-text-fill: #ff7edb;
     -fx-font-weight: bold;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 4, 0, 0, 1);
+    -fx-effect: dropshadow(gaussian, #ff7edb, 8, 0, 0, 0);
+    -fx-border-color: #ff7edb;
+    -fx-border-width: 1px;
 }
 
 /* Window Title Bar */
 .window-title-bar {
-    -fx-background-color: #1b1d23;
-    -fx-border-color: #181a1f;
+    -fx-background-color: #241b31;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 0 0 1px 0;
     -fx-padding: 0 10px;
     -fx-min-height: 32px;
     -fx-alignment: CENTER_LEFT;
+    -fx-effect: dropshadow(gaussian, rgba(255, 126, 219, 0.3), 10, 0, 0, 1);
 }
 
 .window-title {
-    -fx-text-fill: #9da5b4;
+    -fx-text-fill: #ff7edb;
     -fx-font-size: 12px;
     -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", sans-serif;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 2, 0, 0, 0);
 }
 
 .window-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #9da5b4;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 12px;
     -fx-padding: 6px 12px;
     -fx-cursor: hand;
@@ -126,13 +127,13 @@
 }
 
 .window-button:hover {
-    -fx-background-color: #3e4451;
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.2);
+    -fx-text-fill: #ff7edb;
 }
 
 .window-button-close {
     -fx-background-color: transparent;
-    -fx-text-fill: #9da5b4;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 12px;
     -fx-padding: 6px 12px;
     -fx-cursor: hand;
@@ -140,14 +141,15 @@
 }
 
 .window-button-close:hover {
-    -fx-background-color: #e06c75;
+    -fx-background-color: #ff2a6d;
     -fx-text-fill: white;
+    -fx-effect: dropshadow(gaussian, #ff2a6d, 10, 0, 0, 0);
 }
 
-/* Sidebar Action Buttons (VS Code Style) */
+/* Sidebar Action Buttons */
 .sidebar-action-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #c5cede;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 14px;
     -fx-padding: 2px 6px;
     -fx-border-width: 0;
@@ -156,24 +158,26 @@
 }
 
 .sidebar-action-button:hover {
-    -fx-background-color: rgba(255,255,255,0.1);
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.2);
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 /* Sidebar */
 .sidebar {
-    -fx-background-color: #1b1d23;
-    -fx-border-color: #181a1f;
-    -fx-border-width: 0 1px 0 0; /* Right border for the whole sidebar */
+    -fx-background-color: #241b31;
+    -fx-border-color: #ff7edb;
+    -fx-border-width: 0 1px 0 0;
+    -fx-effect: dropshadow(gaussian, rgba(255, 126, 219, 0.2), 10, 0, 2, 0);
 }
 
 /* Context Menu Styling */
 .context-menu {
-    -fx-background-color: rgba(11, 14, 21, 0.95);
-    -fx-border-color: rgba(255,255,255,0.06);
+    -fx-background-color: #241b31;
+    -fx-border-color: #00e8f8;
     -fx-border-width: 1px;
     -fx-padding: 5px 0;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.7), 18, 0.2, 0, 6);
+    -fx-effect: dropshadow(gaussian, #00e8f8, 10, 0, 0, 0);
 }
 
 .menu-item {
@@ -182,41 +186,42 @@
 }
 
 .menu-item:focused {
-    -fx-background-color: rgba(97,175,239,0.25);
+    -fx-background-color: rgba(0, 232, 248, 0.2);
 }
 
 .menu-item .label {
-    -fx-text-fill: #cdd6e3;
+    -fx-text-fill: #fdfdfd;
     -fx-font-size: 13px;
     -fx-font-family: "JetBrains Mono", "Roboto", "Segoe UI", sans-serif;
 }
 
 .separator-menu-item .line {
-    -fx-border-color: #3e4451;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 1px 0 0 0;
 }
 
-/* Custom Dialog Styling (Modern Dark - JetBrains New UI Style) */
+/* Custom Dialog Styling */
 .custom-dialog {
-    -fx-background-color: #1e1f22;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 20, 0, 0, 8);
+    -fx-background-color: #2b213a;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 15, 0, 0, 0);
     -fx-background-radius: 8px;
-    -fx-border-color: #393b40;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 1px;
     -fx-border-radius: 8px;
 }
 
 .dialog-header {
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #ff7edb;
     -fx-font-size: 18px;
     -fx-font-weight: bold;
     -fx-padding: 0 0 5px 0;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .dialog-input {
-    -fx-background-color: #2b2d30;
-    -fx-text-fill: #bcbec4;
-    -fx-border-color: #43454a;
+    -fx-background-color: #241b31;
+    -fx-text-fill: #00e8f8;
+    -fx-border-color: #00e8f8;
     -fx-border-radius: 5px;
     -fx-background-radius: 5px;
     -fx-padding: 9px;
@@ -224,31 +229,32 @@
 }
 
 .dialog-input:focused {
-    -fx-border-color: #3574f0;
-    -fx-background-color: #2b2d30;
-    -fx-effect: dropshadow(gaussian, rgba(53, 116, 240, 0.25), 4, 0, 0, 0);
+    -fx-border-color: #ff7edb;
+    -fx-background-color: #241b31;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 8, 0, 0, 0);
 }
 
-/* Primary Button (Blue) */
+/* Primary Button */
 .dialog-button-primary {
-    -fx-background-color: #3574f0;
-    -fx-text-fill: #ffffff;
+    -fx-background-color: #ff7edb;
+    -fx-text-fill: #2b213a;
     -fx-font-weight: bold;
     -fx-background-radius: 5px;
     -fx-cursor: hand;
     -fx-padding: 9px 18px;
     -fx-font-size: 13px;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 10, 0, 0, 0);
 }
 
 .dialog-button-primary:hover {
-    -fx-background-color: #366ac9;
+    -fx-background-color: #ff9ce5;
 }
 
-/* Secondary Button (Dark Gray) */
+/* Secondary Button */
 .dialog-button-secondary {
-    -fx-background-color: #2b2d30;
-    -fx-text-fill: #bcbec4;
-    -fx-border-color: #43454a;
+    -fx-background-color: #241b31;
+    -fx-text-fill: #00e8f8;
+    -fx-border-color: #00e8f8;
     -fx-border-radius: 5px;
     -fx-background-radius: 5px;
     -fx-cursor: hand;
@@ -257,98 +263,102 @@
 }
 
 .dialog-button-secondary:hover {
-    -fx-background-color: #393b40;
-    -fx-border-color: #5a5d63;
-    -fx-text-fill: #dfe1e5;
+    -fx-background-color: rgba(0, 232, 248, 0.2);
+    -fx-border-color: #ff7edb;
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
-/* Cancel Button (Ghost) */
+/* Cancel Button */
 .dialog-button-cancel {
     -fx-background-color: transparent;
-    -fx-text-fill: #7c7f88;
+    -fx-text-fill: #fdfdfd;
     -fx-cursor: hand;
     -fx-padding: 9px 14px;
     -fx-font-size: 13px;
 }
 
 .dialog-button-cancel:hover {
-    -fx-text-fill: #dfe1e5;
-    -fx-background-color: #2b2d30;
+    -fx-text-fill: #ff7edb;
+    -fx-background-color: rgba(255, 126, 219, 0.1);
     -fx-background-radius: 5px;
 }
 
 .search-field {
-    -fx-padding: 4px 8px; /* Shorter height */
+    -fx-padding: 4px 8px;
     -fx-font-size: 13px;
-    -fx-background-radius: 0; /* Square edges to match sidebar width look? Or keep it? User said "width same as sidebar" */
+    -fx-background-radius: 0;
     -fx-border-radius: 0;
-    -fx-background-color: #1b1d23;
-    -fx-text-fill: #abb2bf;
-    -fx-border-color: transparent transparent #181a1f transparent;
+    -fx-background-color: #241b31;
+    -fx-text-fill: #00e8f8;
+    -fx-border-color: transparent transparent #ff7edb transparent;
     -fx-border-width: 1px;
 }
 
 .search-field:focused {
-    -fx-background-color: #2c313a;
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.1);
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
-/* Settings Dialog - IntelliJ Style */
+/* Settings Dialog */
 .settings-dialog {
-    -fx-background-color: #1e1f22;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 20, 0, 0, 10);
+    -fx-background-color: #2b213a;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 20, 0, 0, 0);
     -fx-background-radius: 8px;
-    -fx-border-color: #393b40;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 1px;
     -fx-border-radius: 8px;
 }
 
 .settings-sidebar {
-    -fx-background-color: #2b2d30;
+    -fx-background-color: #241b31;
     -fx-padding: 10px 0;
-    -fx-border-color: #393b40;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 0 1px 0 0;
     -fx-min-width: 200px;
 }
 
 .settings-sidebar .list-cell {
     -fx-background-color: transparent;
-    -fx-text-fill: #bbbbbb;
+    -fx-text-fill: #00e8f8;
     -fx-padding: 8px 15px;
     -fx-font-size: 13px;
     -fx-cursor: hand;
 }
 
 .settings-sidebar .list-cell:filled:selected, .settings-sidebar .list-cell:filled:hover {
-    -fx-background-color: #393b40;
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.2);
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .settings-content {
     -fx-padding: 20px 30px;
-    -fx-background-color: #1e1f22;
+    -fx-background-color: #2b213a;
 }
 
 .settings-header-label {
     -fx-font-size: 20px;
     -fx-font-weight: bold;
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #ff7edb;
     -fx-padding: 0 0 20px 0;
-    -fx-border-color: #393b40;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 0 0 1px 0;
     -fx-margin: 0 0 20px 0;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .settings-section-label {
     -fx-font-size: 14px;
     -fx-font-weight: bold;
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #00e8f8;
     -fx-padding: 10px 0 5px 0;
 }
 
 .settings-hint-label {
     -fx-font-size: 12px;
-    -fx-text-fill: #7c7f88;
+    -fx-text-fill: #fdfdfd;
     -fx-wrap-text: true;
 }
 
@@ -356,37 +366,36 @@
     -fx-spacing: 5px;
 }
 
-/* IntelliJ-like Input Fields */
 .settings-text-field {
-    -fx-background-color: #2b2d30;
-    -fx-text-fill: #dfe1e5;
-    -fx-border-color: #5e6060;
+    -fx-background-color: #241b31;
+    -fx-text-fill: #00e8f8;
+    -fx-border-color: #00e8f8;
     -fx-border-radius: 4px;
     -fx-background-radius: 4px;
     -fx-padding: 6px 10px;
 }
 
 .settings-text-field:focused {
-    -fx-border-color: #3574f0;
-    -fx-effect: dropshadow(gaussian, rgba(53, 116, 240, 0.4), 3, 0, 0, 0);
+    -fx-border-color: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 8, 0, 0, 0);
 }
 
 .settings-combo-box {
-    -fx-background-color: #2b2d30;
-    -fx-border-color: #5e6060;
+    -fx-background-color: #241b31;
+    -fx-border-color: #00e8f8;
     -fx-border-radius: 4px;
     -fx-background-radius: 4px;
 }
 
 .settings-combo-box .list-cell {
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #00e8f8;
 }
 
 /* Footer Actions */
 .settings-footer {
     -fx-padding: 15px 20px;
-    -fx-background-color: #1e1f22;
-    -fx-border-color: #393b40;
+    -fx-background-color: #2b213a;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 1px 0 0 0;
     -fx-alignment: CENTER_RIGHT;
     -fx-spacing: 10px;
@@ -399,19 +408,20 @@
 
 .tree-cell {
     -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
+    -fx-text-fill: #fdfdfd;
     -fx-padding: 4px 8px;
-    -fx-font-family: "JetBrains Mono", "Segoe UI", sans-serif; /* Cleaner font for tree */
+    -fx-font-family: "JetBrains Mono", "Segoe UI", sans-serif;
     -fx-font-size: 13px;
 }
 
 .tree-cell:filled:selected, .tree-cell:filled:selected:hover {
-    -fx-background-color: #4b6eaf; /* IntelliJ Selection Blue */
-    -fx-text-fill: white;
+    -fx-background-color: rgba(255, 126, 219, 0.3);
+    -fx-text-fill: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .tree-cell:filled:hover {
-    -fx-background-color: #2c313a;
+    -fx-background-color: rgba(0, 232, 248, 0.1);
 }
 
 .title-field {
@@ -419,9 +429,10 @@
     -fx-border-width: 0;
     -fx-font-size: 24px;
     -fx-font-weight: bold;
-    -fx-text-fill: #abb2bf;
+    -fx-text-fill: #ff7edb;
     -fx-padding: 10px 0;
-    -fx-prompt-text-fill: #5c6370;
+    -fx-prompt-text-fill: rgba(255, 126, 219, 0.5);
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .title-field:focused {
@@ -431,18 +442,18 @@
 
 .editor-area {
     -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
-    -fx-font-size: 16px; /* Increased default size */
+    -fx-font-size: 16px;
     -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
+    -fx-text-fill: #fdfdfd;
     -fx-control-inner-background: transparent;
-    -fx-highlight-fill: #3e4451;
-    -fx-highlight-text-fill: #abb2bf;
+    -fx-highlight-fill: rgba(255, 126, 219, 0.3);
+    -fx-highlight-text-fill: #ff7edb;
     -fx-display-caret: true;
 }
 
 .editor-area .content {
     -fx-background-color: transparent;
-    -fx-padding: 0; /* Remove internal padding to align perfectly with title */
+    -fx-padding: 0;
 }
 
 .editor-area:focused {
@@ -455,33 +466,36 @@
 
 /* Status Bar */
 .status-bar {
-    -fx-background-color: #1b1d23;
-    -fx-border-color: #181a1f;
+    -fx-background-color: #241b31;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 1px 0 0 0;
     -fx-padding: 5px 10px;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 10, 0, 0, -2); /* Subtle top shadow */
+    -fx-effect: dropshadow(gaussian, rgba(255, 126, 219, 0.3), 10, 0, 0, -2);
 }
 
 .status-label {
-    -fx-text-fill: #9da5b4;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 12px;
 }
 
 .status-branch {
-    -fx-text-fill: #98c379; /* Green for branch name */
+    -fx-text-fill: #ff7edb;
     -fx-font-size: 12px;
     -fx-font-weight: bold;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 3, 0, 0, 0);
 }
 
-/* IntelliJ-like Notifications */
+/* Notifications */
 .notification-popup {
-    -fx-background-color: #2b2d30;
+    -fx-background-color: #241b31;
     -fx-background-radius: 5px;
     -fx-border-radius: 5px;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 15, 0, 0, 5);
+    -fx-effect: dropshadow(gaussian, #ff7edb, 15, 0, 0, 5);
     -fx-padding: 0;
     -fx-min-width: 250px;
     -fx-max-width: 300px;
+    -fx-border-color: #ff7edb;
+    -fx-border-width: 1px;
 }
 
 .notification-accent {
@@ -491,10 +505,10 @@
     -fx-background-radius: 5px 0 0 5px;
 }
 
-.notification-accent-info { -fx-background-color: #3574f0; }
-.notification-accent-success { -fx-background-color: #57965c; }
-.notification-accent-warning { -fx-background-color: #c19600; }
-.notification-accent-error { -fx-background-color: #e05555; }
+.notification-accent-info { -fx-background-color: #00e8f8; }
+.notification-accent-success { -fx-background-color: #ff7edb; }
+.notification-accent-warning { -fx-background-color: #f9c74f; }
+.notification-accent-error { -fx-background-color: #ff2a6d; }
 
 .notification-content {
     -fx-padding: 8px 12px;
@@ -507,33 +521,33 @@
 }
 
 .notification-title {
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #ff7edb;
     -fx-font-weight: bold;
     -fx-font-size: 12px;
 }
 
 .notification-message {
-    -fx-text-fill: #bbbbbb;
+    -fx-text-fill: #fdfdfd;
     -fx-font-size: 12px;
     -fx-wrap-text: true;
 }
 
 .notification-close-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #7c7f88;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 10px;
     -fx-padding: 2px 5px;
     -fx-cursor: hand;
 }
 
 .notification-close-button:hover {
-    -fx-text-fill: #dfe1e5;
-    -fx-background-color: rgba(255,255,255,0.1);
+    -fx-text-fill: #ff7edb;
+    -fx-background-color: rgba(255, 126, 219, 0.1);
     -fx-background-radius: 3px;
 }
 
 .notification-action-link {
-    -fx-text-fill: #3574f0;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 13px;
     -fx-padding: 0;
     -fx-border-width: 0;
@@ -542,24 +556,23 @@
 
 .notification-action-link:hover {
     -fx-underline: true;
+    -fx-text-fill: #ff7edb;
 }
 
 .line-numbers {
     -fx-background-color: transparent;
-    -fx-text-fill: #5c6370;
+    -fx-text-fill: #00e8f8;
     -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
     -fx-font-size: 16px;
     -fx-padding: 20 5 20 0;
     -fx-alignment: TOP-RIGHT;
-    -fx-border-color: #181a1f;
+    -fx-border-color: #ff7edb;
     -fx-border-width: 0 1px 0 0;
     -fx-control-inner-background: transparent;
+    -fx-effect: dropshadow(gaussian, #00e8f8, 2, 0, 0, 0);
 }
 
 .line-numbers .content {
     -fx-background-color: transparent;
     -fx-alignment: TOP-RIGHT;
 }
-
-
-

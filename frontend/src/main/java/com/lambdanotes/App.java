@@ -1638,6 +1638,12 @@ public class App extends Application {
         if ("Light".equals(theme)) {
             mainLayout.getScene().getStylesheets().add(getClass().getResource("light_theme.css").toExternalForm());
             Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerLight().getUserAgentStylesheet());
+        } else if ("Tokyo Night".equals(theme)) {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("tokyo_night.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+        } else if ("Retro Night".equals(theme)) {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("retro_night.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
         } else {
             mainLayout.getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
             Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());

@@ -150,7 +150,7 @@ public class SettingsDialog extends Stage {
         themeLabel.getStyleClass().add("settings-section-label");
 
         themeComboBox = new ComboBox<>();
-        themeComboBox.getItems().addAll("Dark", "Light");
+        themeComboBox.getItems().addAll("Dark", "Light", "Tokyo Night", "Retro Night");
         themeComboBox.setMaxWidth(200);
         themeComboBox.getStyleClass().add("settings-combo-box");
         
