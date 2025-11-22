@@ -1,6 +1,7 @@
 package com.lambdanotes;
 
 import atlantafx.base.theme.PrimerDark;
+import atlantafx.base.theme.PrimerLight;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
@@ -57,6 +58,7 @@ import javafx.scene.control.ScrollBar;
 import javafx.geometry.Orientation;
 import java.util.Set;
 import javafx.scene.Node;
+import javafx.stage.Modality;
 
 public class App extends Application {
 
@@ -80,6 +82,7 @@ public class App extends Application {
     private Label viewModeLabel; // New label for footer
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
+    private boolean isSynced = true; // Track sync status
     
     private double currentEditorFontSize = 16;
     private static final double MAX_CONTENT_WIDTH = 900;
@@ -447,7 +450,7 @@ public class App extends Application {
 
         Button btnClose = new Button("✕");
         btnClose.getStyleClass().add("window-button-close");
-        btnClose.setOnAction(e -> stage.close());
+        btnClose.setOnAction(e -> requestClose(stage));
 
         titleBar.getChildren().addAll(titleLabel, spacer, btnSync, btnSettings, btnMinimize, btnMaximize, btnClose);
 
@@ -797,6 +800,11 @@ public class App extends Application {
 
     private void applySettings(AppConfig config) {
         if (config == null) return;
+        
+        if (config.getTheme() != null) {
+            applyTheme(config.getTheme());
+        }
+        
         if (editorArea != null) {
             currentEditorFontSize = config.getEditorFontSize();
             updateEditorStyle();
@@ -896,6 +904,8 @@ public class App extends Application {
         Note note = new Note(title, editorArea.getText());
         noteService.saveNote(note).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
+            isSynced = false; // Mark as unsaved/unsynced
+            statusLabel.setText("Kaydedildi (Senkronize Edilmedi)");
             if (!silent) showAlert("Başarılı", "Not kaydedildi.");
         })).exceptionally(e -> {
             Platform.runLater(() -> {
@@ -1076,6 +1086,10 @@ public class App extends Application {
     }
 
     private void syncNotes() {
+        syncNotes(null);
+    }
+
+    private void syncNotes(Runnable onSuccess) {
         statusLabel.setText("Senkronize ediliyor...");
         syncSpinner.setVisible(true);
         
@@ -1098,16 +1112,22 @@ public class App extends Application {
 
             noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                 refreshNoteList();
+                isSynced = true; // Mark as synced
                 statusLabel.setText("Hazır");
                 syncSpinner.setVisible(false);
                 rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                showNotification(
-                    "Senkronizasyon Başarılı", 
-                    "Notlar başarıyla senkronize edildi.", 
-                    NotificationType.SUCCESS, 
-                    "Repo'yu Aç", 
-                    () -> getHostServices().showDocument(repoUrl)
-                );
+                
+                if (onSuccess != null) {
+                    onSuccess.run();
+                } else {
+                    showNotification(
+                        "Senkronizasyon Başarılı", 
+                        "Notlar başarıyla senkronize edildi.", 
+                        NotificationType.SUCCESS, 
+                        "Repo'yu Aç", 
+                        () -> getHostServices().showDocument(repoUrl)
+                    );
+                }
                 logger.info("Sync completed successfully.");
             })).exceptionally(e -> {
                 Platform.runLater(() -> {
@@ -1125,16 +1145,22 @@ public class App extends Application {
                  // Config fetch failed, try sync anyway
                  noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                     refreshNoteList();
+                    isSynced = true; // Mark as synced
                     statusLabel.setText("Hazır");
                     syncSpinner.setVisible(false);
                     rootStack.getChildren().remove(loadingOverlay);
-                    showNotification(
-                        "Senkronizasyon Başarılı", 
-                        "Notlar başarıyla senkronize edildi.", 
-                        NotificationType.SUCCESS, 
-                        "GitHub'ı Aç", 
-                        () -> getHostServices().showDocument("https://github.com")
-                    );
+                    
+                    if (onSuccess != null) {
+                        onSuccess.run();
+                    } else {
+                        showNotification(
+                            "Senkronizasyon Başarılı", 
+                            "Notlar başarıyla senkronize edildi.", 
+                            NotificationType.SUCCESS, 
+                            "GitHub'ı Aç", 
+                            () -> getHostServices().showDocument("https://github.com")
+                        );
+                    }
                     logger.info("Sync completed successfully (config fetch failed).");
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {
@@ -1481,5 +1507,112 @@ public class App extends Application {
             backendManager.stopBackend();
         }
         super.stop();
+    }
+
+    private void requestClose(Stage stage) {
+        if (isSynced) {
+            stage.close();
+        } else {
+            showExitConfirmation(stage);
+        }
+    }
+
+    private void showExitConfirmation(Stage ownerStage) {
+        Stage dialogStage = new Stage();
+        dialogStage.initOwner(ownerStage);
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+
+        VBox content = new VBox(20);
+        content.getStyleClass().add("custom-dialog");
+        content.setPadding(new Insets(20));
+        content.setPrefWidth(480); // Wider for 3 buttons
+        
+        Label header = new Label("Çıkış Onayı");
+        header.getStyleClass().add("dialog-header");
+        
+        Label message = new Label("Değişiklikler senkronize edilmedi. Ne yapmak istersiniz?");
+        message.setWrapText(true);
+        message.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 14px;");
+        
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        
+        // Result holder: 0=cancel, 1=exit, 2=sync&exit
+        final int[] result = {0};
+
+        Button btnCancel = new Button("İptal");
+        btnCancel.getStyleClass().add("dialog-button-cancel");
+        btnCancel.setOnAction(e -> {
+            result[0] = 0;
+            dialogStage.close();
+        });
+        
+        Button btnSyncAndExit = new Button("Senkronize Et ve Kapat");
+        btnSyncAndExit.getStyleClass().add("dialog-button-primary");
+        btnSyncAndExit.setOnAction(e -> {
+            result[0] = 2;
+            dialogStage.close();
+        });
+
+        Button btnExit = new Button("Kapat");
+        btnExit.getStyleClass().add("dialog-button-secondary");
+        btnExit.setStyle("-fx-background-color: #e06c75; -fx-text-fill: white; -fx-border-color: #e06c75;"); // Red for danger
+        btnExit.setOnAction(e -> {
+            result[0] = 1;
+            dialogStage.close();
+        });
+        
+        buttons.getChildren().addAll(btnCancel, btnSyncAndExit, btnExit);
+        content.getChildren().addAll(header, message, buttons);
+        
+        Scene scene = new Scene(content);
+        scene.setFill(Color.TRANSPARENT);
+        
+        // Apply current theme to dialog
+        if (ownerStage.getScene() != null) {
+             scene.getStylesheets().addAll(ownerStage.getScene().getStylesheets());
+        }
+        
+        dialogStage.setScene(scene);
+        
+        // Center on owner
+        dialogStage.setOnShown(e -> {
+            dialogStage.setX(ownerStage.getX() + (ownerStage.getWidth() - dialogStage.getWidth()) / 2);
+            dialogStage.setY(ownerStage.getY() + (ownerStage.getHeight() - dialogStage.getHeight()) / 2);
+        });
+        
+        // Enable dragging
+        final double[] xOffset = {0};
+        final double[] yOffset = {0};
+        content.setOnMousePressed(event -> {
+            xOffset[0] = event.getSceneX();
+            yOffset[0] = event.getSceneY();
+        });
+        content.setOnMouseDragged(event -> {
+            dialogStage.setX(event.getScreenX() - xOffset[0]);
+            dialogStage.setY(event.getScreenY() - yOffset[0]);
+        });
+
+        dialogStage.showAndWait();
+
+        if (result[0] == 1) { // Exit
+            ownerStage.close();
+        } else if (result[0] == 2) { // Sync and Exit
+            syncNotes(() -> ownerStage.close());
+        }
+    }
+
+    private void applyTheme(String theme) {
+        if (mainLayout == null || mainLayout.getScene() == null) return;
+        
+        mainLayout.getScene().getStylesheets().clear();
+        if ("Light".equals(theme)) {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("light_theme.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerLight().getUserAgentStylesheet());
+        } else {
+            mainLayout.getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+            Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+        }
     }
 }

@@ -46,11 +46,15 @@ public class SettingsDialog extends Stage {
     private Slider fontSizeSlider;
     private Label fontSizeValueLabel;
     private CheckBox showLineNumbersCheckBox;
+    
+    // Appearance Settings Components
+    private ComboBox<String> themeComboBox;
 
     // Views Cache
     private VBox githubView;
     private VBox editorView;
     private VBox generalView;
+    private VBox appearanceView;
 
     public SettingsDialog(NoteService noteService, AppConfig currentConfig) {
         this.noteService = noteService;
@@ -80,6 +84,7 @@ public class SettingsDialog extends Stage {
         githubView = createGitHubSettingsView();
         editorView = createEditorSettingsView();
         generalView = createGeneralSettingsView();
+        appearanceView = createAppearanceSettingsView();
 
         // Initial View
         switchView("GitHub");
@@ -122,6 +127,8 @@ public class SettingsDialog extends Stage {
                 contentArea.getChildren().add(generalView);
                 break;
             case "Görünüm":
+                contentArea.getChildren().add(appearanceView);
+                break;
             case "Hakkında":
                 Label placeholder = new Label(category + " ayarları yakında...");
                 placeholder.setStyle("-fx-text-fill: #7c7f88; -fx-font-size: 14px;");
@@ -130,6 +137,37 @@ public class SettingsDialog extends Stage {
         }
     }
 
+    private VBox createAppearanceSettingsView() {
+        VBox view = new VBox(20);
+        view.setAlignment(Pos.TOP_LEFT);
+
+        Label header = new Label("Görünüm Ayarları");
+        header.getStyleClass().add("settings-header-label");
+
+        // Theme Section
+        VBox themeSection = new VBox(10);
+        Label themeLabel = new Label("Tema");
+        themeLabel.getStyleClass().add("settings-section-label");
+
+        themeComboBox = new ComboBox<>();
+        themeComboBox.getItems().addAll("Dark", "Light");
+        themeComboBox.setMaxWidth(200);
+        themeComboBox.getStyleClass().add("settings-combo-box");
+        
+        if (currentConfig != null && currentConfig.getTheme() != null) {
+            themeComboBox.getSelectionModel().select(currentConfig.getTheme());
+        } else {
+            themeComboBox.getSelectionModel().select("Dark");
+        }
+
+        Label themeHint = new Label("Uygulama temasını değiştirin.");
+        themeHint.getStyleClass().add("settings-hint-label");
+
+        themeSection.getChildren().addAll(themeLabel, themeComboBox, themeHint);
+
+        view.getChildren().addAll(header, themeSection);
+        return view;
+    }
 
     private VBox createEditorSettingsView() {
         VBox view = new VBox(20);
@@ -339,6 +377,7 @@ public class SettingsDialog extends Stage {
         String username = (currentConfig != null) ? currentConfig.getUsername() : "";
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (currentConfig != null) ? currentConfig.getEditorFontSize() : 16;
+        String theme = (currentConfig != null && currentConfig.getTheme() != null) ? currentConfig.getTheme() : "Dark";
 
         // Update from UI
         if (tokenField != null && !tokenField.getText().isEmpty()) {
@@ -362,10 +401,15 @@ public class SettingsDialog extends Stage {
         if (showLineNumbersCheckBox != null) {
             showLineNumbers = showLineNumbersCheckBox.isSelected();
         }
+        
+        if (themeComboBox != null && themeComboBox.getValue() != null) {
+            theme = themeComboBox.getValue();
+        }
 
         result = new AppConfig(repoUrl, token, username, email);
         result.setEditorFontSize(fontSize);
         result.setShowLineNumbers(showLineNumbers);
+        result.setTheme(theme);
         
         close();
     }
@@ -517,6 +561,7 @@ public class SettingsDialog extends Stage {
                     if (importedConfig.getToken() != null) tokenField.setText(importedConfig.getToken());
                     if (fontSizeSlider != null) fontSizeSlider.setValue(importedConfig.getEditorFontSize());
                     if (showLineNumbersCheckBox != null) showLineNumbersCheckBox.setSelected(importedConfig.isShowLineNumbers());
+                    if (themeComboBox != null && importedConfig.getTheme() != null) themeComboBox.getSelectionModel().select(importedConfig.getTheme());
                     
                     // Reload repos if token is present
                     if (importedConfig.getToken() != null && !importedConfig.getToken().isEmpty()) {
@@ -548,6 +593,7 @@ public class SettingsDialog extends Stage {
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (int) fontSizeSlider.getValue();
         boolean showLineNumbers = showLineNumbersCheckBox.isSelected();
+        String theme = themeComboBox.getValue();
 
         if (tokenField != null && !tokenField.getText().isEmpty()) {
             token = tokenField.getText();
@@ -559,6 +605,7 @@ public class SettingsDialog extends Stage {
         AppConfig configToExport = new AppConfig(repoUrl, token, username, email);
         configToExport.setEditorFontSize(fontSize);
         configToExport.setShowLineNumbers(showLineNumbers);
+        configToExport.setTheme(theme);
 
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Ayarları Dışa Aktar");

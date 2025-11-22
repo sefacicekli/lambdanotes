@@ -7,6 +7,7 @@ public class AppConfig {
     private String email;
     private int editorFontSize = 14; // Default font size
     private boolean showLineNumbers = true; // Default show line numbers
+    private String theme = "Dark"; // Default theme
 
     public AppConfig(String repoUrl, String token, String username, String email) {
         this.repoUrl = repoUrl;
@@ -30,4 +31,7 @@ public class AppConfig {
 
     public boolean isShowLineNumbers() { return showLineNumbers; }
     public void setShowLineNumbers(boolean showLineNumbers) { this.showLineNumbers = showLineNumbers; }
+
+    public String getTheme() { return theme; }
+    public void setTheme(String theme) { this.theme = theme; }
 }
