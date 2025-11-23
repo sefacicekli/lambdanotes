@@ -399,32 +399,40 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 
+		// Check if git config changed
+		gitChanged := config.RepoURL != newConfig.RepoURL ||
+			config.Token != newConfig.Token ||
+			config.Username != newConfig.Username ||
+			config.Email != newConfig.Email
+
 		config = newConfig
 		saveConfig()
 
-		// Git yapılandırması
-		// 1. Git init (eğer yoksa)
-		if _, err := os.Stat(filepath.Join(notesDir, ".git")); os.IsNotExist(err) {
-			runGitCommand("init")
-			runGitCommand("branch", "-M", "main")
-		}
+		// Git yapılandırması (Sadece değiştiyse)
+		if gitChanged {
+			// 1. Git init (eğer yoksa)
+			if _, err := os.Stat(filepath.Join(notesDir, ".git")); os.IsNotExist(err) {
+				runGitCommand("init")
+				runGitCommand("branch", "-M", "main")
+			}
 
-		// 2. Config ayarları
-		runGitCommand("config", "user.name", config.Username)
-		runGitCommand("config", "user.email", config.Email)
+			// 2. Config ayarları
+			runGitCommand("config", "user.name", config.Username)
+			runGitCommand("config", "user.email", config.Email)
 
-		// 3. Remote ekle/güncelle
-		runGitCommand("remote", "remove", "origin")
-		authURL := getAuthRepoURL()
-		if err := runGitCommand("remote", "add", "origin", authURL); err != nil {
-			log.Printf("Remote add error: %v", err)
-			http.Error(w, "Remote eklenemedi: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+			// 3. Remote ekle/güncelle
+			runGitCommand("remote", "remove", "origin")
+			authURL := getAuthRepoURL()
+			if err := runGitCommand("remote", "add", "origin", authURL); err != nil {
+				log.Printf("Remote add error: %v", err)
+				http.Error(w, "Remote eklenemedi: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 
-		// 4. İlk pull (eğer repo boş değilse)
-		if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
-			log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+			// 4. İlk pull (eğer repo boş değilse)
+			if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
+				log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)

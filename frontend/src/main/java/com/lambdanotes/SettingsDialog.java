@@ -15,6 +15,7 @@ import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.io.File;
@@ -27,8 +28,11 @@ public class SettingsDialog extends Stage {
 
     private static final Logger logger = Logger.getLogger(SettingsDialog.class.getName());
     private final NoteService noteService;
+    private final Consumer<String> onThemeChange;
     private AppConfig result = null;
     private AppConfig currentConfig;
+    private String originalTheme;
+    private boolean saved = false;
 
     // UI Components
     private BorderPane root;
@@ -46,6 +50,8 @@ public class SettingsDialog extends Stage {
     private Slider fontSizeSlider;
     private Label fontSizeValueLabel;
     private CheckBox showLineNumbersCheckBox;
+    private CheckBox showTabsCheckBox;
+    private CheckBox showTitleInPreviewCheckBox;
     
     // Appearance Settings Components
     private ComboBox<String> themeComboBox;
@@ -56,9 +62,16 @@ public class SettingsDialog extends Stage {
     private VBox generalView;
     private VBox appearanceView;
 
-    public SettingsDialog(NoteService noteService, AppConfig currentConfig) {
+    public SettingsDialog(NoteService noteService, AppConfig currentConfig, Consumer<String> onThemeChange) {
         this.noteService = noteService;
         this.currentConfig = currentConfig;
+        this.onThemeChange = onThemeChange;
+        
+        if (currentConfig != null && currentConfig.getTheme() != null) {
+            this.originalTheme = currentConfig.getTheme();
+        } else {
+            this.originalTheme = "Dark";
+        }
         
         initModality(Modality.APPLICATION_MODAL);
         initStyle(StageStyle.TRANSPARENT);
@@ -112,6 +125,13 @@ public class SettingsDialog extends Stage {
             setX(event.getScreenX() - xOffset[0]);
             setY(event.getScreenY() - yOffset[0]);
         });
+        
+        // Revert theme if closed without saving
+        setOnHidden(e -> {
+            if (!saved && onThemeChange != null) {
+                onThemeChange.accept(originalTheme);
+            }
+        });
     }
 
     private void switchView(String category) {
@@ -155,17 +175,84 @@ public class SettingsDialog extends Stage {
         themeComboBox.getStyleClass().add("settings-combo-box");
         
         if (currentConfig != null && currentConfig.getTheme() != null) {
-            themeComboBox.getSelectionModel().select(currentConfig.getTheme());
+            String currentTheme = currentConfig.getTheme();
+            // Case insensitive search for theme
+            for (String item : themeComboBox.getItems()) {
+                if (item.equalsIgnoreCase(currentTheme)) {
+                    themeComboBox.getSelectionModel().select(item);
+                    break;
+                }
+            }
+            if (themeComboBox.getSelectionModel().getSelectedItem() == null) {
+                 themeComboBox.getSelectionModel().select("Dark");
+            }
         } else {
             themeComboBox.getSelectionModel().select("Dark");
         }
 
+        // Apply theme immediately on change
+        themeComboBox.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                try {
+                    // Update global app theme
+                    if (onThemeChange != null) {
+                        onThemeChange.accept(newVal);
+                    }
+
+                    switch (newVal) {
+                        case "Light":
+                            javafx.application.Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerLight().getUserAgentStylesheet());
+                            break;
+                        case "Dark":
+                            javafx.application.Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+                            break;
+                        case "Tokyo Night":
+                            javafx.application.Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+                            break;
+                        case "Retro Night":
+                             javafx.application.Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
+                             break;
+                    }
+                    // Re-apply custom styles to this dialog
+                    if (getScene() != null) {
+                        getScene().getStylesheets().clear();
+                        if ("Light".equals(newVal)) {
+                            getScene().getStylesheets().add(getClass().getResource("light_theme.css").toExternalForm());
+                        } else if ("Tokyo Night".equals(newVal)) {
+                            getScene().getStylesheets().add(getClass().getResource("tokyo_night.css").toExternalForm());
+                        } else if ("Retro Night".equals(newVal)) {
+                            getScene().getStylesheets().add(getClass().getResource("retro_night.css").toExternalForm());
+                        } else {
+                            getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Failed to apply theme: " + newVal, e);
+                }
+            }
+        });
+
         Label themeHint = new Label("Uygulama temasını değiştirin.");
         themeHint.getStyleClass().add("settings-hint-label");
+        
+        // Preview Settings
+        VBox previewSection = new VBox(10);
+        Label previewLabel = new Label("Önizleme");
+        previewLabel.getStyleClass().add("settings-section-label");
+        
+        showTitleInPreviewCheckBox = new CheckBox("Başlığı Önizlemede Göster");
+        showTitleInPreviewCheckBox.setStyle("-fx-text-fill: #dfe1e5;");
+        if (currentConfig != null) {
+            showTitleInPreviewCheckBox.setSelected(currentConfig.isShowTitleInPreview());
+        } else {
+            showTitleInPreviewCheckBox.setSelected(true);
+        }
+        
+        previewSection.getChildren().addAll(previewLabel, showTitleInPreviewCheckBox);
 
         themeSection.getChildren().addAll(themeLabel, themeComboBox, themeHint);
 
-        view.getChildren().addAll(header, themeSection);
+        view.getChildren().addAll(header, themeSection, new Separator(), previewSection);
         return view;
     }
 
@@ -219,9 +306,32 @@ public class SettingsDialog extends Stage {
             showLineNumbersCheckBox.setSelected(true);
         }
 
-        lineNumbersSection.getChildren().addAll(lineNumbersLabel, showLineNumbersCheckBox);
+        showTabsCheckBox = new CheckBox("Sekmeleri Göster (Tab Desteği)");
+        showTabsCheckBox.setStyle("-fx-text-fill: #dfe1e5;");
+        if (currentConfig != null) {
+            showTabsCheckBox.setSelected(currentConfig.isShowTabs());
+        } else {
+            showTabsCheckBox.setSelected(false);
+        }
 
-        view.getChildren().addAll(header, fontSection, new Separator(), lineNumbersSection);
+        lineNumbersSection.getChildren().addAll(lineNumbersLabel, showLineNumbersCheckBox, showTabsCheckBox);
+
+        // Title in Preview Section
+        VBox titlePreviewSection = new VBox(10);
+        Label titlePreviewLabel = new Label("Başlık Önizlemesi");
+        titlePreviewLabel.getStyleClass().add("settings-section-label");
+
+        showTitleInPreviewCheckBox = new CheckBox("Başlıkları Önizlemede Göster");
+        showTitleInPreviewCheckBox.setStyle("-fx-text-fill: #dfe1e5;");
+        if (currentConfig != null) {
+            showTitleInPreviewCheckBox.setSelected(currentConfig.isShowTitleInPreview());
+        } else {
+            showTitleInPreviewCheckBox.setSelected(true);
+        }
+
+        titlePreviewSection.getChildren().addAll(titlePreviewLabel, showTitleInPreviewCheckBox);
+
+        view.getChildren().addAll(header, fontSection, new Separator(), lineNumbersSection, titlePreviewSection);
         return view;
     }
 
@@ -402,6 +512,16 @@ public class SettingsDialog extends Stage {
             showLineNumbers = showLineNumbersCheckBox.isSelected();
         }
         
+        boolean showTabs = false;
+        if (showTabsCheckBox != null) {
+            showTabs = showTabsCheckBox.isSelected();
+        }
+        
+        boolean showTitleInPreview = true;
+        if (showTitleInPreviewCheckBox != null) {
+            showTitleInPreview = showTitleInPreviewCheckBox.isSelected();
+        }
+        
         if (themeComboBox != null && themeComboBox.getValue() != null) {
             theme = themeComboBox.getValue();
         }
@@ -409,8 +529,11 @@ public class SettingsDialog extends Stage {
         result = new AppConfig(repoUrl, token, username, email);
         result.setEditorFontSize(fontSize);
         result.setShowLineNumbers(showLineNumbers);
+        result.setShowTabs(showTabs);
+        result.setShowTitleInPreview(showTitleInPreview);
         result.setTheme(theme);
         
+        saved = true;
         close();
     }
 
@@ -561,6 +684,7 @@ public class SettingsDialog extends Stage {
                     if (importedConfig.getToken() != null) tokenField.setText(importedConfig.getToken());
                     if (fontSizeSlider != null) fontSizeSlider.setValue(importedConfig.getEditorFontSize());
                     if (showLineNumbersCheckBox != null) showLineNumbersCheckBox.setSelected(importedConfig.isShowLineNumbers());
+                    if (showTabsCheckBox != null) showTabsCheckBox.setSelected(importedConfig.isShowTabs());
                     if (themeComboBox != null && importedConfig.getTheme() != null) themeComboBox.getSelectionModel().select(importedConfig.getTheme());
                     
                     // Reload repos if token is present
@@ -593,6 +717,8 @@ public class SettingsDialog extends Stage {
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (int) fontSizeSlider.getValue();
         boolean showLineNumbers = showLineNumbersCheckBox.isSelected();
+        boolean showTabs = showTabsCheckBox.isSelected();
+        boolean showTitleInPreview = showTitleInPreviewCheckBox.isSelected();
         String theme = themeComboBox.getValue();
 
         if (tokenField != null && !tokenField.getText().isEmpty()) {
@@ -605,6 +731,8 @@ public class SettingsDialog extends Stage {
         AppConfig configToExport = new AppConfig(repoUrl, token, username, email);
         configToExport.setEditorFontSize(fontSize);
         configToExport.setShowLineNumbers(showLineNumbers);
+        configToExport.setShowTabs(showTabs);
+        configToExport.setShowTitleInPreview(showTitleInPreview);
         configToExport.setTheme(theme);
 
         FileChooser fileChooser = new FileChooser();

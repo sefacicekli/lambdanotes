@@ -63,6 +63,7 @@ import javafx.geometry.Orientation;
 import java.util.Set;
 import javafx.scene.Node;
 import javafx.stage.Modality;
+import javafx.scene.layout.Pane;
 
 public class App extends Application {
 
@@ -87,6 +88,7 @@ public class App extends Application {
     private PauseTransition autoSaveTimer;
     private BackendManager backendManager;
     private boolean isSynced = true; // Track sync status
+    private String currentTheme = "Dark"; // Track current theme
     
     private double currentEditorFontSize = 16;
     private static final double MAX_CONTENT_WIDTH = 900;
@@ -120,6 +122,18 @@ public class App extends Application {
     private ViewMode currentMode = ViewMode.READING;
     private HBox modeSwitcher;
 
+    // Tab related fields
+    private TabPane editorTabPane;
+    private boolean showTabs = false;
+    private java.util.Map<String, Tab> openTabs = new java.util.HashMap<>();
+    private java.util.Map<Tab, VBox> tabEditorPanels = new java.util.HashMap<>();
+
+    // Track title visibility in preview
+    private boolean showTitleInPreview = true;
+
+    // Header Pane (Mode Switcher only)
+    private AnchorPane headerPane;
+
     @Override
     public void start(Stage stage) {
         setupLogging();
@@ -147,6 +161,7 @@ public class App extends Application {
                 .build();
         renderer = HtmlRenderer.builder()
                 .extensions(Arrays.asList(TablesExtension.create()))
+                .softBreak("<br />")
                 .build();
 
         // Auto-save timer (1 second delay)
@@ -175,13 +190,9 @@ public class App extends Application {
                 return new DraggableTreeCell();
             }
         });
-        noteTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null && newVal.isLeaf()) {
-                // Build full path from tree item
-                String fullPath = buildPath(newVal);
-                loadNote(fullPath);
-            }
-        });
+        // Removed selection listener to prevent opening on right click.
+        // Opening is now handled in DraggableTreeCell.setOnMouseClicked
+
         
         // Explorer Header (Label + Buttons)
         HBox explorerHeader = new HBox(5);
@@ -247,7 +258,7 @@ public class App extends Application {
         titleField.getStyleClass().add("title-field");
 
         // Header Pane (Mode Switcher only)
-        AnchorPane headerPane = new AnchorPane();
+        headerPane = new AnchorPane();
         headerPane.setMinHeight(40); // Ensure some height
         
         HBox modeSwitch = createModeSwitcher();
@@ -313,17 +324,53 @@ public class App extends Application {
         editorPanel = createEditorPanel();
         previewPanel = createPreviewPanel();
 
+        // Tab Pane Initialization
+        editorTabPane = new TabPane();
+        editorTabPane.getStyleClass().add("editor-tab-pane");
+        editorTabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.ALL_TABS);
+
         // Default: Only Editor
         splitPane.getItems().add(editorPanel);
         VBox.setVgrow(splitPane, Priority.ALWAYS);
+        VBox.setVgrow(editorTabPane, Priority.ALWAYS);
 
+        // Initial check for tabs will happen in applySettings
         mainContent.getChildren().addAll(headerPane, splitPane);
         
         // Empty State
         emptyState = new StackPane();
+        
+        VBox emptyContent = new VBox(20);
+        emptyContent.setAlignment(Pos.CENTER);
+        emptyContent.setMaxWidth(600);
+        
         Label emptyLabel = new Label("LambdaNotes");
-        emptyLabel.setStyle("-fx-text-fill: #3e4451; -fx-font-size: 48px; -fx-font-weight: bold;");
-        emptyState.getChildren().add(emptyLabel);
+        emptyLabel.setStyle("-fx-text-fill: #3e4451; -fx-font-size: 48px; -fx-font-weight: bold; -fx-opacity: 0.5;");
+        
+        VBox actionsBox = new VBox(10);
+        actionsBox.setAlignment(Pos.CENTER_LEFT);
+        actionsBox.setMaxWidth(300);
+        actionsBox.setStyle("-fx-padding: 20px;");
+
+        Label startLabel = new Label("Başlangıç");
+        startLabel.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 0 0 10 0;");
+        
+        Button actionNewNote = createStartAction("Yeni Not Oluştur", "Yeni bir markdown dosyası oluştur", "📄");
+        actionNewNote.setOnAction(e -> clearEditor());
+        
+        Button actionNewFolder = createStartAction("Yeni Klasör", "Notları düzenlemek için klasör ekle", "📁");
+        actionNewFolder.setOnAction(e -> createNewFolder());
+        
+        Button actionSync = createStartAction("Senkronize Et", "Notları GitHub ile eşitle", "🔄");
+        actionSync.setOnAction(e -> syncNotes());
+        
+        Button actionSettings = createStartAction("Ayarlar", "Tema ve bağlantı ayarlarını yapılandır", "⚙");
+        actionSettings.setOnAction(e -> openSettings());
+
+        actionsBox.getChildren().addAll(startLabel, actionNewNote, actionNewFolder, actionSync, actionSettings);
+        
+        emptyContent.getChildren().addAll(emptyLabel, actionsBox);
+        emptyState.getChildren().add(emptyContent);
         
         // Set initial center to Empty State
         mainLayout.setCenter(emptyState);
@@ -507,29 +554,99 @@ public class App extends Application {
 
     private void setViewMode(ViewMode mode) {
         currentMode = mode;
-        splitPane.getItems().clear();
         
-        switch (mode) {
+        if (showTabs) {
+            // Update active tab layout
+            Tab currentTab = editorTabPane.getSelectionModel().getSelectedItem();
+            if (currentTab != null) {
+                updateTabLayout(currentTab);
+            }
+        } else {
+            // Classic Mode
+            splitPane.getItems().clear();
+            switch (mode) {
+                case READING:
+                    splitPane.getItems().add(previewPanel);
+                    updatePreview(editorArea.getText());
+                    if (viewModeLabel != null) viewModeLabel.setText("Okuma Modu");
+                    break;
+                case WRITING:
+                    splitPane.getItems().add(editorPanel);
+                    if (viewModeLabel != null) viewModeLabel.setText("Yazma Modu");
+                    break;
+                case SPLIT:
+                    splitPane.getItems().addAll(editorPanel, previewPanel);
+                    splitPane.setDividerPositions(0.5);
+                    updatePreview(editorArea.getText());
+                    if (viewModeLabel != null) viewModeLabel.setText("Split Modu");
+                    break;
+            }
+        }
+        
+        updateModeSwitcherState();
+        updatePreviewStatus();
+        updateEditorStyle();
+    }
+
+    private void updateTabLayout(Tab tab) {
+        if (tab == null) return;
+        
+        // Tab content is now VBox(AnchorPane header, SplitPane content)
+        if (!(tab.getContent() instanceof VBox)) return;
+        
+        VBox tabContent = (VBox) tab.getContent();
+        if (tabContent.getChildren().size() < 2) return;
+        
+        AnchorPane tabHeader = (AnchorPane) tabContent.getChildren().get(0);
+        SplitPane tabSplitPane = (SplitPane) tabContent.getChildren().get(1);
+        
+        // Move Mode Switcher to this tab's header
+        if (modeSwitcher != null) {
+            // Remove from previous parent
+            if (modeSwitcher.getParent() instanceof Pane) {
+                ((Pane) modeSwitcher.getParent()).getChildren().remove(modeSwitcher);
+            }
+            
+            // Add to this tab's header
+            if (!tabHeader.getChildren().contains(modeSwitcher)) {
+                tabHeader.getChildren().add(modeSwitcher);
+                AnchorPane.setRightAnchor(modeSwitcher, 10.0);
+                AnchorPane.setTopAnchor(modeSwitcher, 5.0); // Adjusted for tab header height
+                AnchorPane.setBottomAnchor(modeSwitcher, 5.0);
+            }
+        }
+        
+        VBox tabEditorPanel = tabEditorPanels.get(tab);
+        if (tabEditorPanel == null) return; 
+        
+        tabSplitPane.getItems().clear();
+        
+        // Remove previewPanel from any parent to avoid "duplicate children" error
+        if (previewPanel.getParent() instanceof SplitPane) {
+            ((SplitPane) previewPanel.getParent()).getItems().remove(previewPanel);
+        }
+        
+        switch (currentMode) {
             case READING:
-                splitPane.getItems().add(previewPanel);
-                updatePreview(editorArea.getText());
+                tabSplitPane.getItems().add(previewPanel);
+                if (editorTabPane.getSelectionModel().getSelectedItem() == tab) {
+                     updatePreview(editorArea.getText());
+                }
                 if (viewModeLabel != null) viewModeLabel.setText("Okuma Modu");
                 break;
             case WRITING:
-                splitPane.getItems().add(editorPanel);
+                tabSplitPane.getItems().add(tabEditorPanel);
                 if (viewModeLabel != null) viewModeLabel.setText("Yazma Modu");
                 break;
             case SPLIT:
-                splitPane.getItems().addAll(editorPanel, previewPanel);
-                splitPane.setDividerPositions(0.5);
-                updatePreview(editorArea.getText());
+                tabSplitPane.getItems().addAll(tabEditorPanel, previewPanel);
+                tabSplitPane.setDividerPositions(0.5);
+                if (editorTabPane.getSelectionModel().getSelectedItem() == tab) {
+                    updatePreview(editorArea.getText());
+                }
                 if (viewModeLabel != null) viewModeLabel.setText("Split Modu");
                 break;
         }
-        updateModeSwitcherState();
-        updatePreviewStatus();
-        // updateTitleStyle(); // Removed
-        updateEditorStyle(); // Update both
     }
 
     private void updateModeSwitcherState() {
@@ -790,7 +907,7 @@ public class App extends Application {
     private void openSettings() {
         // Mevcut config'i al (bunu bir yerde saklamamız lazım, şimdilik servisten çekelim)
         noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
-            SettingsDialog dialog = new SettingsDialog(noteService, config);
+            SettingsDialog dialog = new SettingsDialog(noteService, config, this::applyTheme);
             Optional<AppConfig> result = dialog.showAndWaitResult();
 
             result.ifPresent(newConfig -> {
@@ -805,7 +922,7 @@ public class App extends Application {
         })).exceptionally(e -> {
             // Config çekilemezse boş aç
             Platform.runLater(() -> {
-                SettingsDialog dialog = new SettingsDialog(noteService, null);
+                SettingsDialog dialog = new SettingsDialog(noteService, null, this::applyTheme);
                 Optional<AppConfig> result = dialog.showAndWaitResult();
                 result.ifPresent(newConfig -> {
                      noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> applySettings(newConfig)));
@@ -819,6 +936,7 @@ public class App extends Application {
         if (config == null) return;
         
         if (config.getTheme() != null) {
+            this.currentTheme = config.getTheme();
             applyTheme(config.getTheme());
         }
         
@@ -833,8 +951,58 @@ public class App extends Application {
             if (show) {
                 updateLineNumbers();
             }
-            // updateTitleStyle(); // Removed
             updateEditorStyle(); // Re-align editor and title
+        }
+        
+        // Apply Tab Settings
+        this.showTabs = config.isShowTabs();
+        this.showTitleInPreview = config.isShowTitleInPreview();
+        
+        if (showTabs) {
+            // Remove headerPane from mainContent if it exists (we will move modeSwitcher inside tabs)
+            mainContent.getChildren().remove(headerPane); // Remove global header
+            
+            if (!mainContent.getChildren().contains(editorTabPane)) {
+                // Remove splitPane from mainContent if it exists
+                mainContent.getChildren().remove(splitPane);
+                // Add editorTabPane if not present
+                if (!mainContent.getChildren().contains(editorTabPane)) {
+                    mainContent.getChildren().add(0, editorTabPane); // Add to top
+                }
+            }
+            
+            // Refresh current tab layout to include mode switcher
+            Tab currentTab = editorTabPane.getSelectionModel().getSelectedItem();
+            if (currentTab != null) {
+                updateTabLayout(currentTab);
+            }
+        } else {
+            // Classic Mode
+            if (mainContent.getChildren().contains(editorTabPane)) {
+                mainContent.getChildren().remove(editorTabPane);
+            }
+            
+            // Restore global header
+            if (!mainContent.getChildren().contains(headerPane)) {
+                mainContent.getChildren().add(0, headerPane);
+            }
+            
+            if (!mainContent.getChildren().contains(splitPane)) {
+                mainContent.getChildren().add(splitPane);
+            }
+            
+            // Ensure splitPane has editorPanel
+            if (!splitPane.getItems().contains(editorPanel)) {
+                splitPane.getItems().add(0, editorPanel);
+            }
+            
+            // Ensure modeSwitcher is in headerPane
+            if (!headerPane.getChildren().contains(modeSwitcher)) {
+                headerPane.getChildren().add(modeSwitcher);
+                AnchorPane.setRightAnchor(modeSwitcher, 10.0);
+                AnchorPane.setTopAnchor(modeSwitcher, 10.0);
+                AnchorPane.setBottomAnchor(modeSwitcher, 5.0);
+            }
         }
     }
 
@@ -880,6 +1048,56 @@ public class App extends Application {
         String fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
         String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
         
+        String title = titleField != null ? titleField.getText() : "";
+        // Remove extension for display if present
+        if (title.endsWith(".md")) {
+            title = title.substring(0, title.length() - 3);
+        }
+        // If title contains path, take only filename
+        if (title.contains("/")) {
+            title = title.substring(title.lastIndexOf("/") + 1);
+        }
+
+        // Determine colors based on theme
+        String textColor, bgColor, titleColor, codeBg, codeColor, borderColor, linkColor;
+        
+        if ("Light".equalsIgnoreCase(currentTheme)) {
+            textColor = "#24292e";
+            bgColor = "#ffffff";
+            titleColor = "#24292e";
+            codeBg = "#f6f8fa";
+            codeColor = "#24292e";
+            borderColor = "#e1e4e8";
+            linkColor = "#0366d6";
+        } else {
+            // Dark / Tokyo Night / Retro Night
+            // User requested darker/more visible text. 
+            // #abb2bf is standard OneDark. Let's make it brighter: #e6e6e6
+            textColor = "#e6e6e6"; 
+            bgColor = "transparent"; // Transparent to show app background
+            titleColor = "#e6e6e6";
+            codeBg = "#2c313a";
+            codeColor = "#98c379";
+            borderColor = "#3e4451";
+            linkColor = "#61afef";
+        }
+
+        // Check if title should be shown
+        boolean showTitle = true;
+        // We need to access the config to check showTitleInPreview
+        // Since we don't have direct access to config object here easily without passing it around,
+        // we can check the SettingsDialog static or store it in App.
+        // But wait, we have noteService.getConfig() which is async.
+        // Let's add a field `showTitleInPreview` to App.java and update it in applySettings.
+        // For now, default to true.
+        
+        String titleHtml = "";
+        // We need to add showTitleInPreview field to App.java to control this.
+        // Assuming we will add it.
+        if (this.showTitleInPreview) {
+             titleHtml = "<div class='note-title'>" + title + "</div><hr class='title-separator'/>";
+        }
+
         String styledHtml = "<html><head>" +
                 "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css\">" +
                 "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>" +
@@ -889,25 +1107,29 @@ public class App extends Application {
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
-                "body { font-family: 'JetBrains Mono', sans-serif; color: #abb2bf; background-color: transparent; padding: 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
-                "h1, h2, h3 { color: #61afef; border-bottom: 1px solid #3e4451; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
+                "body { font-family: 'JetBrains Mono', sans-serif; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                ".note-title { font-size: 1.8em; font-weight: bold; color: " + titleColor + "; margin-bottom: 5px; border-bottom: none; opacity: 0.9; }" +
+                ".title-separator { border: 0; height: 1px; background-image: linear-gradient(to right, " + borderColor + ", rgba(0,0,0,0)); margin-bottom: 20px; }" +
+                "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
-                "strong, b { color: #abb2bf; font-weight: bold; }" +
+                "strong, b { color: " + textColor + "; font-weight: bold; }" +
                 "code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.9em; }" +
-                ":not(pre) > code { background-color: #2c313a; padding: 2px 6px; border-radius: 4px; color: #98c379; }" +
-                "pre { background-color: #282c34; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #181a1f; margin-top: 10px; }" +
+                ":not(pre) > code { background-color: " + codeBg + "; padding: 2px 6px; border-radius: 4px; color: " + codeColor + "; }" +
+                "pre { background-color: " + codeBg + "; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid " + borderColor + "; margin-top: 10px; }" +
                 "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
                 ".hljs { background: transparent !important; }" +
-                "blockquote { border-left: 4px solid #61afef; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
-                "a { color: #61afef; text-decoration: none; }" +
+                "blockquote { border-left: 4px solid " + linkColor + "; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
+                "a { color: " + linkColor + "; text-decoration: none; }" +
                 "a:hover { text-decoration: underline; }" +
                 "table { border-collapse: collapse; width: 100%; margin: 15px 0; }" +
-                "th, td { border: 1px solid #3e4451; padding: 8px; text-align: left; }" +
-                "th { background-color: #21252b; color: #d19a66; }" +
+                "th, td { border: 1px solid " + borderColor + "; padding: 8px; text-align: left; }" +
+                "th { background-color: " + codeBg + "; color: " + textColor + "; }" +
                 "img { max-width: 100%; border-radius: 5px; }" +
                 "ul, ol { padding-left: 20px; }" +
                 "li { margin-bottom: 5px; }" +
-                "</style></head><body style='background-color: transparent;'>" + html + "</body></html>";
+                "</style></head><body style='background-color: " + bgColor + ";'>" +
+                titleHtml +
+                html + "</body></html>";
         previewArea.getEngine().loadContent(styledHtml);
         updatePreviewStatus();
     }
@@ -915,16 +1137,218 @@ public class App extends Application {
     private void loadNote(String filename) {
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
             mainLayout.setCenter(mainContent); // Switch to content view
-            titleField.setText(note.getFilename());
-            editorArea.setText(note.getContent());
+            
+            if (showTabs) {
+                // Tab Logic
+                if (openTabs.containsKey(filename)) {
+                    editorTabPane.getSelectionModel().select(openTabs.get(filename));
+                } else {
+                    Tab tab = new Tab(note.getFilename());
+                    tab.setUserData(filename); // Store full path
+                    
+                    // Create new editor instance for this tab
+                    TextArea tabEditor = new TextArea(note.getContent());
+                    tabEditor.getStyleClass().add("editor-area");
+                    tabEditor.setWrapText(false);
+                    
+                    // Create Editor Panel for this tab (similar to createEditorPanel but for specific editor)
+                    VBox tabEditorPanel = createEditorPanelForTab(tabEditor, note.getFilename());
+                    tabEditorPanels.put(tab, tabEditorPanel);
+                    
+                    // Sync settings to new editor
+                    double width = editorArea.getWidth(); // Use main editor width as reference
+                    double hPadding = (width - MAX_CONTENT_WIDTH) / 2;
+                    if (hPadding < 70) hPadding = 70;
+                    tabEditor.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+
+                    // Listeners
+                    tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
+                        if (!tab.getText().endsWith("*")) {
+                            tab.setText(tab.getText() + "*");
+                        }
+                        // If this is the active tab, update preview and stats
+                        if (editorTabPane.getSelectionModel().getSelectedItem() == tab) {
+                             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) updatePreview(newVal);
+                             updateEditorStats(newVal);
+                        }
+                        autoSaveTimer.playFromStart();
+                    });
+                    
+                    // Handle Tab Close
+                    tab.setOnClosed(e -> {
+                        openTabs.remove(filename);
+                        tabEditorPanels.remove(tab);
+                    });
+
+                    // Create SplitPane for this tab
+                    SplitPane tabSplitPane = new SplitPane();
+                    tabSplitPane.getStyleClass().add("main-split-pane");
+                    VBox.setVgrow(tabSplitPane, Priority.ALWAYS);
+                    
+                    // Create a container for the tab content: Header (ModeSwitcher) + SplitPane
+                    VBox tabContent = new VBox();
+                    tabContent.getStyleClass().add("tab-content");
+                    
+                    // Header container for ModeSwitcher
+                    AnchorPane tabHeader = new AnchorPane();
+                    tabHeader.setMinHeight(40);
+                    tabHeader.setPrefHeight(40);
+                    tabHeader.setMaxHeight(40);
+                    tabHeader.getStyleClass().add("tab-header-pane");
+                    
+                    tabContent.getChildren().addAll(tabHeader, tabSplitPane);
+                    
+                    tab.setContent(tabContent);
+                    
+                    editorTabPane.getTabs().add(tab);
+                    editorTabPane.getSelectionModel().select(tab);
+                    openTabs.put(filename, tab);
+                    
+                    // Update global reference when tab changes
+                    editorTabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+                        if (newTab != null) {
+                            // Find the editor for this tab
+                            VBox panel = tabEditorPanels.get(newTab);
+                            
+                            // Find editorArea in panel
+                            if (panel != null && panel.getChildren().size() > 1) {
+                                Node body = panel.getChildren().get(1); // StackPane body
+                                if (body instanceof StackPane) {
+                                    Node stack = ((StackPane) body).getChildren().get(0);
+                                    if (stack instanceof StackPane) {
+                                        Node editor = ((StackPane) stack).getChildren().get(0);
+                                        if (editor instanceof TextArea) {
+                                            editorArea = (TextArea) editor;
+                                            titleField.setText(newTab.getUserData().toString());
+                                            updateEditorStats(editorArea.getText());
+                                            updateTabLayout(newTab); // Ensure layout is correct (moves preview & modeSwitcher)
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Set initial reference
+                    editorArea = tabEditor;
+                    updateTabLayout(tab); // Initial layout
+                }
+            } else {
+                // Classic Mode
+                titleField.setText(note.getFilename());
+                editorArea.setText(note.getContent());
+            }
+            
             updateLineNumbers();
             updateEditorStats(note.getContent());
-            setViewMode(ViewMode.READING); // Default to Reading mode on load
+            if (!showTabs) setViewMode(ViewMode.READING); // Default to Reading mode on load (Classic)
         }));
+    }
+
+    private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
+        VBox container = new VBox();
+        container.getStyleClass().add("editor-panel");
+
+        TextArea tabLineNumbers = new TextArea("1");
+        tabLineNumbers.setEditable(false);
+        tabLineNumbers.getStyleClass().add("line-numbers");
+        tabLineNumbers.setWrapText(false);
+        tabLineNumbers.setPrefWidth(50);
+        tabLineNumbers.setMinWidth(50);
+        tabLineNumbers.setMaxWidth(50);
+        tabLineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
+        tabLineNumbers.setMouseTransparent(true);
+
+        // Sync line numbers
+        tabEditor.scrollTopProperty().addListener((obs, oldVal, newVal) -> tabLineNumbers.setScrollTop(newVal.doubleValue()));
+        tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
+             int lines = newVal.split("\n", -1).length;
+             StringBuilder sb = new StringBuilder();
+             for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+             tabLineNumbers.setText(sb.toString());
+        });
+        // Initial line numbers
+        int lines = tabEditor.getText().split("\n", -1).length;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+        tabLineNumbers.setText(sb.toString());
+
+        StackPane editorStack = new StackPane();
+        editorStack.getChildren().addAll(tabEditor, tabLineNumbers);
+        StackPane.setAlignment(tabLineNumbers, Pos.TOP_LEFT);
+        
+        StackPane editorBody = new StackPane(editorStack);
+        editorBody.getStyleClass().add("panel-body");
+        VBox.setVgrow(editorBody, Priority.ALWAYS);
+        
+        // We don't need TitleField in the tab content if tabs are used?
+        // VS Code doesn't show title field in editor.
+        // But we use it for renaming/saving.
+        // Let's keep it for now, or maybe hide it?
+        // User said "tabler orta alanın en üstünde".
+        // If we have tabs, the tab title is the filename.
+        // But we might want to edit the filename.
+        // Let's keep the title field for now, but maybe style it differently or keep it as is.
+        // Wait, titleField is global.
+        // If we have tabs, each tab should probably have its own title field?
+        // Or we update the global title field when tab switches.
+        // I implemented updating global title field.
+        // So we don't need title field INSIDE the tab content.
+        // But createEditorPanel adds titleField.
+        
+        // Let's create a dummy spacer or just not add titleField here.
+        // But wait, where is the title field in Tab mode?
+        // If it's global, it should be outside the TabPane?
+        // Currently `mainContent` -> `headerPane` -> `editorTabPane`.
+        // `headerPane` has mode switcher.
+        // `titleField` is not in `mainContent` directly. It's in `editorPanel`.
+        
+        // If we use Tabs, we probably want the Title Field to be part of the "Header" or just hidden (edit via rename).
+        // But for now, let's add a local TextField or just reuse the global one logic?
+        // If I don't add it to the panel, it won't be shown.
+        // If I want it shown, I should add it.
+        // But `titleField` is a single instance. I can't add it to multiple tabs.
+        
+        // Solution: Create a new TextField for each tab?
+        // Or move `titleField` to `headerPane` (Global Header)?
+        // Moving it to global header makes sense for "Active File".
+        
+        // Let's try creating a new TextField for each tab.
+        TextField tabTitleField = new TextField(filename);
+        tabTitleField.setPromptText("Not Başlığı");
+        tabTitleField.setPrefWidth(Double.MAX_VALUE);
+        tabTitleField.setMaxWidth(Double.MAX_VALUE);
+        tabTitleField.setAlignment(Pos.CENTER_LEFT);
+        tabTitleField.getStyleClass().add("title-field");
+        
+        // Sync with tab title
+        tabTitleField.textProperty().addListener((obs, oldVal, newVal) -> {
+             // Update tab user data (filename) - wait, filename includes path.
+             // This is tricky. Title field usually edits content title or filename?
+             // In this app, it seems to be filename.
+             // Let's just let it be.
+        });
+        
+        container.getChildren().addAll(tabTitleField, editorBody);
+        return container;
     }
 
     private void saveNote(boolean silent) {
         String title = titleField.getText();
+        // If tabs enabled, use current tab's data
+        if (showTabs) {
+            Tab currentTab = editorTabPane.getSelectionModel().getSelectedItem();
+            if (currentTab != null) {
+                title = (String) currentTab.getUserData();
+                // Remove * from tab title
+                String tabTitle = currentTab.getText();
+                if (tabTitle.endsWith("*")) {
+                    currentTab.setText(tabTitle.substring(0, tabTitle.length() - 1));
+                }
+            }
+        }
+        
         if (title.isEmpty()) {
             if (!silent) showAlert("Hata", "Başlık boş olamaz.");
             return;
@@ -1315,6 +1739,39 @@ public class App extends Application {
         alert.showAndWait();
     }
 
+    private Button createStartAction(String title, String description, String icon) {
+        Button btn = new Button();
+        btn.getStyleClass().add("start-action-button");
+        btn.setMaxWidth(Double.MAX_VALUE);
+        btn.setAlignment(Pos.CENTER_LEFT);
+        
+        VBox content = new VBox(2);
+        Label titleLabel = new Label(title);
+        titleLabel.setStyle("-fx-text-fill: #61afef; -fx-font-size: 14px; -fx-font-weight: bold;");
+        
+        Label descLabel = new Label(description);
+        descLabel.setStyle("-fx-text-fill: #5c6370; -fx-font-size: 12px;");
+        
+        content.getChildren().addAll(titleLabel, descLabel);
+        
+        HBox layout = new HBox(15);
+        layout.setAlignment(Pos.CENTER_LEFT);
+        
+        Label iconLabel = new Label(icon);
+        iconLabel.setStyle("-fx-font-size: 20px; -fx-text-fill: #abb2bf;");
+        
+        layout.getChildren().addAll(iconLabel, content);
+        
+        btn.setGraphic(layout);
+        
+        // Hover effect
+        btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 8 15;");
+        btn.setOnMouseEntered(e -> btn.setStyle("-fx-background-color: #2c313a; -fx-cursor: hand; -fx-padding: 8 15; -fx-background-radius: 5;"));
+        btn.setOnMouseExited(e -> btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 8 15;"));
+        
+        return btn;
+    }
+
     private Node createIcon(String path, String color) {
         SVGPath svg = new SVGPath();
         svg.setContent(path);
@@ -1331,6 +1788,16 @@ public class App extends Application {
     // Drag & Drop TreeCell Implementation
     private class DraggableTreeCell extends TreeCell<String> {
         public DraggableTreeCell() {
+            setOnMouseClicked(event -> {
+                if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY && event.getClickCount() == 1) {
+                    TreeItem<String> item = getTreeItem();
+                    if (item != null && item.isLeaf()) {
+                        String fullPath = buildPath(item);
+                        loadNote(fullPath);
+                    }
+                }
+            });
+
             setOnDragDetected(event -> {
                 if (getItem() == null) return;
                 Dragboard db = startDragAndDrop(TransferMode.MOVE);
@@ -1345,7 +1812,7 @@ public class App extends Application {
                     event.acceptTransferModes(TransferMode.MOVE);
                 }
                 event.consume();
-            });
+                       });
 
             setOnDragDropped(event -> {
                 Dragboard db = event.getDragboard();
@@ -1555,6 +2022,7 @@ public class App extends Application {
         content.getStyleClass().add("custom-dialog");
         content.setPadding(new Insets(20));
         content.setPrefWidth(480); // Wider for 3 buttons
+        
         
         Label header = new Label("Çıkış Onayı");
         header.getStyleClass().add("dialog-header");
