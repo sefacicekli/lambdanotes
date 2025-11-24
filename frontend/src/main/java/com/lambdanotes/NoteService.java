@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 
 public class NoteService {
     private static final Logger logger = Logger.getLogger(NoteService.class.getName());
-    private static final String API_URL = "http://localhost:8080/api";
+    private static final String API_URL = "http://localhost:3286/api";
     private final HttpClient client;
     private final Gson gson;
 

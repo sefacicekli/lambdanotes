@@ -22,7 +22,7 @@ const (
 	notesDir   = "./notes"
 	configFile = "./config.json"
 	dbFile     = "./notes.db"
-	port       = ":8080"
+	port       = ":3286"
 
 	githubClientID     = "Ov23liq3HVgaBCjZ6Pda"
 	githubClientSecret = "32560715b1ffd6ce2eb0474d8f23ac7948d24efd"
