@@ -28,6 +28,7 @@ import javafx.scene.control.Hyperlink;
 import javafx.animation.FadeTransition;
 import javafx.scene.layout.Region;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.Clipboard;
 import javafx.scene.input.Dragboard;
 import javafx.scene.input.TransferMode;
 import javafx.scene.input.KeyCode;
@@ -2062,19 +2063,33 @@ public class App extends Application {
                     MenuItem exportPdfItem = new MenuItem("PDF Olarak Dışarı Aktar");
                     exportPdfItem.setOnAction(e -> exportToPdf(getTreeItem()));
                     
+                    MenuItem revealItem = new MenuItem("Dosya Gezgininde Göster");
+                    revealItem.setOnAction(e -> revealInExplorer(getTreeItem()));
+
+                    MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
+                    copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
+                    
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
                     
-                    contextMenu.getItems().addAll(exportPdfItem, new SeparatorMenuItem(), deleteItem);
+                    contextMenu.getItems().addAll(exportPdfItem, revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
                     setContextMenu(contextMenu);
                 } else {
                     setGraphic(createIcon(FOLDER_ICON, "#d19a66"));
                     
                     // Context Menu for Folders
                     ContextMenu contextMenu = new ContextMenu();
+                    
+                    MenuItem revealItem = new MenuItem("Dosya Gezgininde Göster");
+                    revealItem.setOnAction(e -> revealInExplorer(getTreeItem()));
+
+                    MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
+                    copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
+                    
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
-                    contextMenu.getItems().add(deleteItem);
+                    
+                    contextMenu.getItems().addAll(revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
                     setContextMenu(contextMenu);
                 }
             }
@@ -2309,5 +2324,101 @@ public class App extends Application {
             mainLayout.getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
             Application.setUserAgentStylesheet(new atlantafx.base.theme.PrimerDark().getUserAgentStylesheet());
         }
+    }
+
+    private void revealInExplorer(TreeItem<String> item) {
+        if (item == null) return;
+        String relativePath = buildPath(item);
+        
+        // Primary location: ~/.lambdanotes/notes
+        String userHome = System.getProperty("user.home");
+        File notesDir = new File(userHome, ".lambdanotes/notes");
+        
+        File file = new File(notesDir, relativePath).getAbsoluteFile();
+        
+        // Fallback: Check relative "notes" directory (useful for dev environment)
+        if (!file.exists()) {
+             File devNotesDir = new File("notes");
+             File devFile = new File(devNotesDir, relativePath).getAbsoluteFile();
+             if (devFile.exists()) {
+                 file = devFile;
+             }
+        }
+        
+        if (!file.exists()) {
+            logger.warning("File not found for reveal: " + file.getAbsolutePath());
+            Platform.runLater(() -> showNotification("Hata", "Dosya bulunamadı: " + relativePath, NotificationType.ERROR, null, null));
+            return;
+        }
+        
+        final File target = file;
+        
+        if (java.awt.Desktop.isDesktopSupported()) {
+            new Thread(() -> {
+                try {
+                    String os = System.getProperty("os.name").toLowerCase();
+                    if (os.contains("win")) {
+                        new ProcessBuilder("explorer.exe", "/select," + target.getAbsolutePath()).start();
+                    } else if (os.contains("mac")) {
+                        Runtime.getRuntime().exec(new String[]{"open", "-R", target.getAbsolutePath()});
+                    } else {
+                        File parent = target.getParentFile();
+                        if (parent != null && parent.exists()) {
+                            java.awt.Desktop.getDesktop().open(parent);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.warning("Failed to reveal file: " + e.getMessage());
+                }
+            }).start();
+        }
+    }
+
+    private void copyGitHubPermalink(TreeItem<String> item) {
+        if (item == null) return;
+        String relativePath = buildPath(item);
+        boolean isFile = item.isLeaf();
+        
+        noteService.getGitInfo().thenAccept(gitInfo -> Platform.runLater(() -> {
+            if (gitInfo == null || gitInfo.commit == null || gitInfo.remoteUrl == null) {
+                showNotification("Hata", "Git bilgileri alınamadı.", NotificationType.ERROR, null, null);
+                return;
+            }
+            
+            String remote = gitInfo.remoteUrl.trim();
+            if (remote.endsWith(".git")) {
+                remote = remote.substring(0, remote.length() - 4);
+            }
+            
+            if (remote.startsWith("git@")) {
+                remote = remote.replace(":", "/").replace("git@", "https://");
+            }
+            
+            // Encode path parts to handle spaces and special characters
+            String[] pathParts = relativePath.split("/");
+            StringBuilder encodedPath = new StringBuilder();
+            for (int i = 0; i < pathParts.length; i++) {
+                try {
+                    encodedPath.append(java.net.URLEncoder.encode(pathParts[i], "UTF-8").replace("+", "%20"));
+                } catch (Exception e) {
+                    encodedPath.append(pathParts[i]);
+                }
+                if (i < pathParts.length - 1) {
+                    encodedPath.append("/");
+                }
+            }
+
+            String type = isFile ? "blob" : "tree";
+            String permalink = String.format("%s/%s/%s/%s", remote, type, gitInfo.commit, encodedPath.toString());
+            
+            ClipboardContent content = new ClipboardContent();
+            content.putString(permalink);
+            Clipboard.getSystemClipboard().setContent(content);
+            
+            showNotification("Başarılı", "GitHub Permalink kopyalandı.", NotificationType.SUCCESS, null, null);
+        })).exceptionally(e -> {
+            Platform.runLater(() -> showNotification("Hata", "Permalink oluşturulamadı: " + e.getMessage(), NotificationType.ERROR, null, null));
+            return null;
+        });
     }
 }

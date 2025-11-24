@@ -228,5 +228,26 @@ public class NoteService {
                     return gson.fromJson(response.body(), AppConfig.class);
                 });
     }
+
+    public static class GitInfo {
+        public String branch;
+        public String commit;
+        public String remoteUrl;
+    }
+
+    public CompletableFuture<GitInfo> getGitInfo() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/info"))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get git info: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), GitInfo.class);
+                });
+    }
 }
 

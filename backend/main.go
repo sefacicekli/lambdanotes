@@ -108,6 +108,7 @@ func main() {
 	http.HandleFunc("/api/config", loggingMiddleware(handleConfig))     // GET, POST (setup)
 	http.HandleFunc("/api/auth/github/start", loggingMiddleware(handleGithubAuthStart))
 	http.HandleFunc("/api/auth/github/poll", loggingMiddleware(handleGithubAuthPoll))
+	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo)) // GET (git info)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
@@ -636,4 +637,53 @@ func syncDatabase() {
 	} else {
 		log.Println("Database sync complete.")
 	}
+}
+
+func handleGitInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get current branch
+	branchCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	branchCmd.Dir = notesDir
+	branchOutput, err := branchCmd.Output()
+	branch := strings.TrimSpace(string(branchOutput))
+	if err != nil {
+		branch = "main" // Default fallback
+	}
+
+	// Get current commit hash
+	commitCmd := exec.Command("git", "rev-parse", "HEAD")
+	commitCmd.Dir = notesDir
+	commitOutput, err := commitCmd.Output()
+	commit := strings.TrimSpace(string(commitOutput))
+	if err != nil {
+		commit = ""
+	}
+
+	// Get remote URL
+	remoteCmd := exec.Command("git", "remote", "get-url", "origin")
+	remoteCmd.Dir = notesDir
+	remoteOutput, err := remoteCmd.Output()
+	remoteURL := strings.TrimSpace(string(remoteOutput))
+	// Clean up remote URL (remove auth info if present)
+	if strings.Contains(remoteURL, "@") {
+		parts := strings.Split(remoteURL, "@")
+		if len(parts) > 1 {
+			remoteURL = "https://" + parts[1]
+		}
+	}
+
+	response := map[string]string{
+		"branch":    branch,
+		"commit":    commit,
+		"remoteUrl": remoteURL,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
