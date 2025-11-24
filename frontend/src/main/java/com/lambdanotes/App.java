@@ -402,26 +402,42 @@ public class App extends Application {
         
         stage.show();
 
-        // Give backend a moment to start
-        new PauseTransition(Duration.seconds(1)).setOnFinished(e -> {
-            noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
-                applySettings(config);
-                if (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) {
-                    syncNotes(); // Auto-sync on startup
-                } else {
-                    refreshNoteList();
-                }
-            })).exceptionally(ex -> {
-                Platform.runLater(() -> refreshNoteList());
-                return null;
-            });
-        });
-        
         // Default to Reading Mode
         setViewMode(ViewMode.READING);
 
         // Check for Updates
         checkForUpdates();
+
+        // Wait for backend to be ready with retry logic
+        waitForBackendAndStart(0);
+    }
+
+    private void waitForBackendAndStart(int attempt) {
+        if (attempt > 10) { // Max 5 seconds (10 * 500ms)
+            logger.severe("Backend failed to start after multiple attempts.");
+            Platform.runLater(() -> {
+                refreshNoteList(); // Try one last time or show error
+                statusLabel.setText("Backend Bağlantı Hatası!");
+            });
+            return;
+        }
+
+        noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
+            logger.info("Backend connected successfully.");
+            applySettings(config);
+            
+            // Always load local notes first to ensure UI is not empty
+            refreshNoteList();
+            
+            if (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) {
+                syncNotes(true); // Auto-sync on startup (background mode)
+            }
+        })).exceptionally(ex -> {
+            // If failed, wait and retry
+            logger.warning("Backend not ready yet (attempt " + (attempt + 1) + "), retrying...");
+            new PauseTransition(Duration.millis(500)).setOnFinished(e -> waitForBackendAndStart(attempt + 1));
+            return null;
+        });
     }
 
     private void setupLogging() {
@@ -1538,24 +1554,34 @@ public class App extends Application {
     }
 
     private void syncNotes() {
-        syncNotes(null);
+        syncNotes(false);
+    }
+
+    private void syncNotes(boolean isBackground) {
+        syncNotes(null, isBackground);
     }
 
     private void syncNotes(Runnable onSuccess) {
+        syncNotes(onSuccess, false);
+    }
+
+    private void syncNotes(Runnable onSuccess, boolean isBackground) {
         statusLabel.setText("Senkronize ediliyor...");
         syncSpinner.setVisible(true);
         
-        // Loading overlay göster
+        // Loading overlay göster (Sadece background değilse)
         VBox loadingOverlay = new VBox(10);
-        loadingOverlay.setAlignment(Pos.CENTER);
-        loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
-        
-        ProgressIndicator pi = new ProgressIndicator();
-        Label loadingLabel = new Label("Senkronize ediliyor, lütfen bekleyin...");
-        loadingLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
-        
-        loadingOverlay.getChildren().addAll(pi, loadingLabel);
-        rootStack.getChildren().add(loadingOverlay);
+        if (!isBackground) {
+            loadingOverlay.setAlignment(Pos.CENTER);
+            loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
+            
+            ProgressIndicator pi = new ProgressIndicator();
+            Label loadingLabel = new Label("Senkronize ediliyor, lütfen bekleyin...");
+            loadingLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+            
+            loadingOverlay.getChildren().addAll(pi, loadingLabel);
+            rootStack.getChildren().add(loadingOverlay);
+        }
         
         noteService.getConfig().thenAccept(config -> {
             String repoUrl = (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) 
@@ -1567,11 +1593,13 @@ public class App extends Application {
                 isSynced = true; // Mark as synced
                 statusLabel.setText("Hazır");
                 syncSpinner.setVisible(false);
-                rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
+                if (!isBackground) {
+                    rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
+                }
                 
                 if (onSuccess != null) {
                     onSuccess.run();
-                } else {
+                } else if (!isBackground) {
                     showNotification(
                         "Senkronizasyon Başarılı", 
                         "Notlar başarıyla senkronize edildi.", 
@@ -1586,8 +1614,10 @@ public class App extends Application {
                     refreshNoteList(); // Sync failed, but still load local notes
                     statusLabel.setText("Hata");
                     syncSpinner.setVisible(false);
-                    rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                    showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
+                    if (!isBackground) {
+                        rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
+                        showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
+                    }
                     logger.severe("Sync failed: " + e.getMessage());
                 });
                 return null;
@@ -1600,11 +1630,13 @@ public class App extends Application {
                     isSynced = true; // Mark as synced
                     statusLabel.setText("Hazır");
                     syncSpinner.setVisible(false);
-                    rootStack.getChildren().remove(loadingOverlay);
+                    if (!isBackground) {
+                        rootStack.getChildren().remove(loadingOverlay);
+                    }
                     
                     if (onSuccess != null) {
                         onSuccess.run();
-                    } else {
+                    } else if (!isBackground) {
                         showNotification(
                             "Senkronizasyon Başarılı", 
                             "Notlar başarıyla senkronize edildi.", 
@@ -1619,8 +1651,10 @@ public class App extends Application {
                         refreshNoteList(); // Sync failed, but still load local notes
                         statusLabel.setText("Hata");
                         syncSpinner.setVisible(false);
-                        rootStack.getChildren().remove(loadingOverlay);
-                        showAlert("Hata", "Senkronizasyon hatası: " + ex.getMessage());
+                        if (!isBackground) {
+                            rootStack.getChildren().remove(loadingOverlay);
+                            showAlert("Hata", "Senkronizasyon hatası: " + ex.getMessage());
+                        }
                         logger.severe("Sync failed: " + ex.getMessage());
                     });
                     return null;
