@@ -275,11 +275,7 @@ func handleSync(w http.ResponseWriter, r *http.Request) {
 	defer mu.Unlock()
 
 	// 1. Değişiklikleri analiz et (Git status)
-	statusCmd := exec.Command("git", "status", "--porcelain")
-	statusCmd.Dir = notesDir
-	statusOutput, _ := statusCmd.Output()
-
-	changes := string(statusOutput)
+	changes, _ := runGitCommandOutput("status", "--porcelain")
 	var added, modified, deleted []string
 
 	lines := strings.Split(changes, "\n")
