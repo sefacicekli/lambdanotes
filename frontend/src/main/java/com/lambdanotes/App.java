@@ -234,13 +234,15 @@ public class App extends Application {
         editorArea = new TextArea();
         editorArea.setPromptText(LanguageManager.get("editor.placeholder"));
         editorArea.getStyleClass().add("editor-area");
-        editorArea.setWrapText(false); // Disable wrap for code editor feel and line number sync
+        editorArea.setWrapText(true); // Enable wrap for long links
         editorArea.textProperty().addListener((obs, oldVal, newVal) -> {
             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) updatePreview(newVal);
             updateEditorStats(newVal);
             updateLineNumbers();
             autoSaveTimer.playFromStart(); // Reset timer on change
         });
+        
+        setupDragAndDrop(editorArea);
 
         // Shift+Enter to insert new line
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
@@ -1200,7 +1202,7 @@ public class App extends Application {
                     // Create new editor instance for this tab
                     TextArea tabEditor = new TextArea(note.getContent());
                     tabEditor.getStyleClass().add("editor-area");
-                    tabEditor.setWrapText(false);
+                    tabEditor.setWrapText(true);
                     
                     // Create Editor Panel for this tab (similar to createEditorPanel but for specific editor)
                     VBox tabEditorPanel = createEditorPanelForTab(tabEditor, note.getFilename());
@@ -1298,6 +1300,7 @@ public class App extends Application {
     }
 
     private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
+        setupDragAndDrop(tabEditor);
         VBox container = new VBox();
         container.getStyleClass().add("editor-panel");
 
@@ -1404,9 +1407,41 @@ public class App extends Application {
 
         noteService.deleteNote(path).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
-            String currentTitle = titleField.getText();
-            if (currentTitle != null && (currentTitle.equals(path) || currentTitle.startsWith(path + "/"))) {
-                clearEditor();
+            
+            if (showTabs) {
+                List<String> tabsToClose = new ArrayList<>();
+                for (String openPath : openTabs.keySet()) {
+                    if (openPath.equals(path) || openPath.startsWith(path + "/")) {
+                        tabsToClose.add(openPath);
+                    }
+                }
+                
+                for (String closePath : tabsToClose) {
+                    Tab tab = openTabs.get(closePath);
+                    if (tab != null) {
+                        editorTabPane.getTabs().remove(tab);
+                        openTabs.remove(closePath);
+                        tabEditorPanels.remove(tab);
+                    }
+                }
+                
+                if (editorTabPane.getTabs().isEmpty()) {
+                    mainLayout.setCenter(emptyState);
+                }
+            } else {
+                String currentTitle = titleField.getText();
+                if (currentTitle != null) {
+                    String normPath = path.replace("\\", "/");
+                    String normTitle = currentTitle.replace("\\", "/");
+                    
+                    if (normTitle.equals(normPath) || 
+                        normPath.equals(normTitle + ".md") || 
+                        normTitle.startsWith(normPath + "/")) {
+                        
+                        clearEditor();
+                        mainLayout.setCenter(emptyState);
+                    }
+                }
             }
         }));
     }
@@ -2586,23 +2621,20 @@ public class App extends Application {
     }
 
     private void handleImageUpload(File file) {
+        handleImageUpload(file, editorArea);
+    }
+
+    private void handleImageUpload(File file, TextArea targetEditor) {
         // Insert placeholder
-        int caret = editorArea.getCaretPosition();
+        int caret = targetEditor.getCaretPosition();
         String placeholder = "![Uploading " + file.getName() + "...]()";
-        editorArea.insertText(caret, placeholder);
+        targetEditor.insertText(caret, placeholder);
         
         // Upload
         noteService.uploadImage(file).thenAccept(response -> Platform.runLater(() -> {
             // Replace placeholder with actual image tag
-            String text = editorArea.getText();
+            String text = targetEditor.getText();
             String replacement;
-            
-            // Use HTML format as requested: <img width="..." height="..." alt="image" src="..." />
-            // We don't have width/height easily available without reading the image again, 
-            // but we can just use the src. The user example had width/height.
-            // Let's try to get dimensions if possible, or just omit them.
-            // For now, let's stick to simple markdown or the requested HTML format without dimensions if we can't get them easily.
-            // Actually, we can get dimensions from the file since we have it.
             
             String dimensions = "";
             try {
@@ -2618,30 +2650,51 @@ public class App extends Application {
             String localSrc = response.localPath.replace("\\", "/");
             replacement = String.format("<img%s alt=\"image\" src=\"%s\" />", dimensions, localSrc);
             
-            // Find and replace the specific placeholder instance
-            // We need to be careful if multiple uploads are happening.
-            // But for now, simple replace is okay-ish, or better: replace range if we tracked it.
-            // Since text might have changed, let's search for the placeholder.
-            
-            int start = editorArea.getText().indexOf(placeholder);
+            int start = targetEditor.getText().indexOf(placeholder);
             if (start != -1) {
-                editorArea.replaceText(start, start + placeholder.length(), replacement);
+                targetEditor.replaceText(start, start + placeholder.length(), replacement);
             } else {
                 // Fallback: append
-                editorArea.appendText("\n" + replacement);
+                targetEditor.appendText("\n" + replacement);
             }
             
             showNotification(LanguageManager.get("dialog.success"), "Resim yüklendi!", NotificationType.SUCCESS, null, null);
         })).exceptionally(e -> {
             Platform.runLater(() -> {
-                String text = editorArea.getText();
+                String text = targetEditor.getText();
                 int start = text.indexOf(placeholder);
                 if (start != -1) {
-                    editorArea.replaceText(start, start + placeholder.length(), "![Upload Failed]()");
+                    targetEditor.replaceText(start, start + placeholder.length(), "![Upload Failed]()");
                 }
                 showNotification(LanguageManager.get("dialog.error"), "Yükleme başarısız: " + e.getMessage(), NotificationType.ERROR, null, null);
             });
             return null;
+        });
+    }
+
+    private void setupDragAndDrop(TextArea area) {
+        area.setOnDragOver(event -> {
+            if (event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
+            }
+            event.consume();
+        });
+
+        area.setOnDragDropped(event -> {
+            Dragboard db = event.getDragboard();
+            boolean success = false;
+            if (db.hasFiles()) {
+                List<File> files = db.getFiles();
+                for (File file : files) {
+                    String name = file.getName().toLowerCase();
+                    if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".gif")) {
+                        handleImageUpload(file, area);
+                        success = true;
+                    }
+                }
+            }
+            event.setDropCompleted(success);
+            event.consume();
         });
     }
 }

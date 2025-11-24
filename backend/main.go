@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -343,8 +344,23 @@ func handleNoteDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(Note{Filename: filename, Content: string(content)})
 	} else if r.Method == "DELETE" {
+		log.Println("Processing DELETE request for:", filename)
 		mu.Lock()
 		defer mu.Unlock()
+
+		// Check if it's a file and read content to find images
+		info, statErr := os.Stat(path)
+		if statErr == nil && !info.IsDir() {
+			contentBytes, readErr := ioutil.ReadFile(path)
+			if readErr == nil {
+				log.Println("Reading note content for image deletion...")
+				deleteNoteImages(string(contentBytes))
+			} else {
+				log.Println("Error reading note content:", readErr)
+			}
+		} else {
+			log.Println("Path is directory or stat failed:", path, statErr)
+		}
 
 		// Recursive delete for directories
 		err := os.RemoveAll(path)
@@ -800,6 +816,73 @@ func handleGitInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func deleteNoteImages(content string) {
+	log.Println("Scanning note content for images to delete...")
+	log.Printf("Content length: %d", len(content))
+	if len(content) > 0 {
+		preview := content
+		if len(content) > 200 {
+			preview = content[:200]
+		}
+		log.Printf("Content preview: %s", preview)
+	}
+
+	// Regex to find image links: ![...](url)
+	reMd := regexp.MustCompile(`!\[.*?\]\((.*?)\)`)
+	matchesMd := reMd.FindAllStringSubmatch(content, -1)
+
+	// Regex to find HTML image tags: src="..."
+	reHtml := regexp.MustCompile(`src=["'](.*?)["']`)
+	matchesHtml := reHtml.FindAllStringSubmatch(content, -1)
+
+	allMatches := append(matchesMd, matchesHtml...)
+
+	log.Printf("Found %d image matches in note content (Markdown: %d, HTML: %d)", len(allMatches), len(matchesMd), len(matchesHtml))
+
+	for _, match := range allMatches {
+		if len(match) > 1 {
+			urlStr := match[1]
+			log.Println("Checking image URL:", urlStr)
+			// Check if it contains "assets/images/"
+			if strings.Contains(urlStr, "assets/images/") {
+				// Extract filename
+				parts := strings.Split(urlStr, "assets/images/")
+				if len(parts) > 1 {
+					filename := parts[1]
+					// Clean up filename (remove query params if any)
+					filename = strings.Split(filename, "?")[0]
+					filename = strings.Split(filename, "#")[0]
+
+					log.Println("Extracted filename:", filename)
+
+					// Only proceed if filename doesn't contain slashes (security/simplicity)
+					if !strings.Contains(filename, "/") && !strings.Contains(filename, "\\") {
+						imagePath := filepath.Join(notesDir, "assets", "images", filename)
+						log.Println("Target image path:", imagePath)
+
+						// Check if file exists before deleting
+						if _, err := os.Stat(imagePath); err == nil {
+							log.Println("Deleting associated image:", imagePath)
+							err := os.Remove(imagePath)
+							if err != nil {
+								log.Println("Error deleting image:", err)
+							} else {
+								log.Println("Image deleted successfully")
+							}
+						} else {
+							log.Println("Image file not found at path:", imagePath)
+						}
+					} else {
+						log.Println("Filename contains slashes, skipping:", filename)
+					}
+				}
+			} else {
+				log.Println("URL does not contain 'assets/images/', skipping")
+			}
+		}
+	}
 }
 
 func handleGitFileStatus(w http.ResponseWriter, r *http.Request) {
