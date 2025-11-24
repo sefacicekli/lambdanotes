@@ -974,6 +974,10 @@ public class App extends Application {
         if (editorArea != null) {
             currentEditorFontSize = config.getEditorFontSize();
             updateEditorStyle();
+            // Update preview if visible to reflect font size change
+            if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) {
+                updatePreview(editorArea.getText());
+            }
         }
         if (lineNumbers != null) {
             boolean show = config.isShowLineNumbers();
@@ -1163,9 +1167,11 @@ public class App extends Application {
 
         String styledHtml = "<html><head>" +
                 "<base href=\"" + baseUrl + "\">" +
-                "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css\">" +
-                "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>" +
-                "<script>hljs.highlightAll();</script>" +
+                "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css\">" +
+                "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js\"></script>" +
+                "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-abap.min.js\"></script>" +
+                "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js\"></script>" +
+                "<script>Prism.plugins.autoloader.languages_path = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';</script>" +
                 "<script>" +
                 "function copyToClipboard(text, button) {" +
                 "  var textArea = document.createElement('textarea');" +
@@ -1197,7 +1203,7 @@ public class App extends Application {
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
-                "body { font-family: 'JetBrains Mono', sans-serif; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "body { font-family: 'JetBrains Mono', sans-serif; font-size: " + currentEditorFontSize + "px; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
                 ".note-title { font-size: 1.8em; font-weight: bold; color: " + titleColor + "; margin-bottom: 5px; border-bottom: none; opacity: 0.9; }" +
                 ".title-separator { border: 0; height: 1px; background-image: linear-gradient(to right, " + borderColor + ", rgba(0,0,0,0)); margin-bottom: 20px; }" +
                 "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
@@ -1207,7 +1213,7 @@ public class App extends Application {
                 ":not(pre) > code { background-color: " + codeBg + "; padding: 2px 6px; border-radius: 4px; color: " + codeColor + "; }" +
                 "pre { background-color: " + codeBg + "; padding: 10px; border-radius: 6px; overflow-x: auto; border: 1px solid " + borderColor + "; margin-top: 10px; position: relative; }" +
                 "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
-                ".hljs { background: transparent !important; }" +
+                "pre[class*=\"language-\"], code[class*=\"language-\"] { background-color: transparent !important; text-shadow: none !important; font-family: 'JetBrains Mono', 'Consolas', monospace !important; }" +
                 ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: 'JetBrains Mono', sans-serif; }" +
                 "pre:hover .copy-button { opacity: 1; }" +
                 ".copy-button:hover { background-color: " + buttonHover + "; }" +
