@@ -277,5 +277,60 @@ public class NoteService {
                 })
                 .exceptionally(e -> false);
     }
+
+    public static class UploadResponse {
+        public String url;
+        public String filename;
+        public String localPath;
+    }
+
+    public CompletableFuture<UploadResponse> uploadImage(java.io.File file) {
+        String boundary = "---" + System.currentTimeMillis() + "---";
+        
+        HttpRequest.BodyPublisher bodyPublisher;
+        try {
+            bodyPublisher = ofMimeMultipartData(java.util.Map.of("file", file), boundary);
+        } catch (java.io.IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/upload"))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(bodyPublisher)
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Upload failed: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), UploadResponse.class);
+                });
+    }
+
+    // Helper for multipart body
+    private HttpRequest.BodyPublisher ofMimeMultipartData(java.util.Map<Object, Object> data, String boundary) throws java.io.IOException {
+        var byteArrays = new ArrayList<byte[]>();
+        byte[] separator = ("--" + boundary + "\r\nContent-Disposition: form-data; name=").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        for (var entry : data.entrySet()) {
+            byteArrays.add(separator);
+
+            if (entry.getValue() instanceof java.io.File) {
+                var file = (java.io.File) entry.getValue();
+                String path = file.toPath().toString();
+                String mimeType = java.nio.file.Files.probeContentType(file.toPath());
+                if (mimeType == null) mimeType = "application/octet-stream";
+                
+                byteArrays.add(("\"" + entry.getKey() + "\"; filename=\"" + file.getName() + "\"\r\nContent-Type: " + mimeType + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                byteArrays.add(java.nio.file.Files.readAllBytes(file.toPath()));
+                byteArrays.add("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } else {
+                byteArrays.add(("\"" + entry.getKey() + "\"\r\n\r\n" + entry.getValue() + "\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
+        byteArrays.add(("--" + boundary + "--").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
+    }
 }
 

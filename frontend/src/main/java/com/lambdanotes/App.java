@@ -248,6 +248,25 @@ public class App extends Application {
                 int caret = editorArea.getCaretPosition();
                 editorArea.insertText(caret, "\n");
                 event.consume();
+            } else if (event.getCode() == KeyCode.V && event.isShortcutDown()) {
+                // Handle Paste
+                Clipboard clipboard = Clipboard.getSystemClipboard();
+                if (clipboard.hasImage()) {
+                    event.consume();
+                    javafx.scene.image.Image image = clipboard.getImage();
+                    handleImagePaste(image);
+                } else if (clipboard.hasFiles()) {
+                    // Handle file paste if it's an image
+                    List<File> files = clipboard.getFiles();
+                    if (!files.isEmpty()) {
+                        File file = files.get(0);
+                        String name = file.getName().toLowerCase();
+                        if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".gif")) {
+                            event.consume();
+                            handleImageUpload(file);
+                        }
+                    }
+                }
             }
         });
         
@@ -1108,7 +1127,29 @@ public class App extends Application {
              titleHtml = "<div class='note-title'>" + title + "</div><hr class='title-separator'/>";
         }
 
+        // Determine Base URL for relative images
+        String baseUrl = "";
+        try {
+            // BackendManager sets working directory to ~/.lambdanotes
+            // But main.go uses ./notes relative to its working dir.
+            // So notes are in ~/.lambdanotes/notes
+            String userHome = System.getProperty("user.home");
+            File notesDir = new File(userHome, ".lambdanotes/notes");
+            if (notesDir.exists()) {
+                baseUrl = notesDir.toURI().toURL().toExternalForm();
+            } else {
+                // Fallback to current dir notes if running in dev mode
+                File devNotes = new File("notes");
+                if (devNotes.exists()) {
+                    baseUrl = devNotes.toURI().toURL().toExternalForm();
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("Failed to determine base URL: " + e.getMessage());
+        }
+
         String styledHtml = "<html><head>" +
+                "<base href=\"" + baseUrl + "\">" +
                 "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css\">" +
                 "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>" +
                 "<script>hljs.highlightAll();</script>" +
@@ -1339,7 +1380,7 @@ public class App extends Application {
         })).exceptionally(e -> {
             Platform.runLater(() -> {
                 statusLabel.setText(LanguageManager.get("status.save_failed"));
-                if (!silent) showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("status.save_failed") + ": " + e.getMessage());
+                if (!silent) showAlert(LanguageManager.get("dialog.error"), "Kaydetme başarısız: " + e.getMessage());
             });
             return null;
         });
@@ -2523,5 +2564,84 @@ public class App extends Application {
             updateEditorStats(editorArea.getText());
         }
         updateGitStatus();
+    }
+
+    private void handleImagePaste(javafx.scene.image.Image image) {
+        try {
+            // Create temp file
+            File tempFile = File.createTempFile("paste", ".png");
+            tempFile.deleteOnExit();
+            
+            // Convert JavaFX Image to BufferedImage
+            java.awt.image.BufferedImage bImage = javafx.embed.swing.SwingFXUtils.fromFXImage(image, null);
+            
+            // Save to temp file
+            javax.imageio.ImageIO.write(bImage, "png", tempFile);
+            
+            handleImageUpload(tempFile);
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Failed to process pasted image", e);
+            showNotification(LanguageManager.get("dialog.error"), "Resim işlenemedi: " + e.getMessage(), NotificationType.ERROR, null, null);
+        }
+    }
+
+    private void handleImageUpload(File file) {
+        // Insert placeholder
+        int caret = editorArea.getCaretPosition();
+        String placeholder = "![Uploading " + file.getName() + "...]()";
+        editorArea.insertText(caret, placeholder);
+        
+        // Upload
+        noteService.uploadImage(file).thenAccept(response -> Platform.runLater(() -> {
+            // Replace placeholder with actual image tag
+            String text = editorArea.getText();
+            String replacement;
+            
+            // Use HTML format as requested: <img width="..." height="..." alt="image" src="..." />
+            // We don't have width/height easily available without reading the image again, 
+            // but we can just use the src. The user example had width/height.
+            // Let's try to get dimensions if possible, or just omit them.
+            // For now, let's stick to simple markdown or the requested HTML format without dimensions if we can't get them easily.
+            // Actually, we can get dimensions from the file since we have it.
+            
+            String dimensions = "";
+            try {
+                javafx.scene.image.Image img = new javafx.scene.image.Image(file.toURI().toString());
+                if (!img.isError()) {
+                    dimensions = String.format(" width=\"%.0f\" height=\"%.0f\"", img.getWidth(), img.getHeight());
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+            
+            // Use local path for src, but ensure forward slashes
+            String localSrc = response.localPath.replace("\\", "/");
+            replacement = String.format("<img%s alt=\"image\" src=\"%s\" />", dimensions, localSrc);
+            
+            // Find and replace the specific placeholder instance
+            // We need to be careful if multiple uploads are happening.
+            // But for now, simple replace is okay-ish, or better: replace range if we tracked it.
+            // Since text might have changed, let's search for the placeholder.
+            
+            int start = editorArea.getText().indexOf(placeholder);
+            if (start != -1) {
+                editorArea.replaceText(start, start + placeholder.length(), replacement);
+            } else {
+                // Fallback: append
+                editorArea.appendText("\n" + replacement);
+            }
+            
+            showNotification(LanguageManager.get("dialog.success"), "Resim yüklendi!", NotificationType.SUCCESS, null, null);
+        })).exceptionally(e -> {
+            Platform.runLater(() -> {
+                String text = editorArea.getText();
+                int start = text.indexOf(placeholder);
+                if (start != -1) {
+                    editorArea.replaceText(start, start + placeholder.length(), "![Upload Failed]()");
+                }
+                showNotification(LanguageManager.get("dialog.error"), "Yükleme başarısız: " + e.getMessage(), NotificationType.ERROR, null, null);
+            });
+            return null;
+        });
     }
 }

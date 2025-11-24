@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -93,10 +95,18 @@ func main() {
 		os.Mkdir(notesDir, 0755)
 	}
 
-	// .gitignore oluştur (Sadece markdown dosyalarını takip et)
+	// .gitignore oluştur veya güncelle
 	gitignorePath := filepath.Join(notesDir, ".gitignore")
+	defaultGitignore := "*\n!*.md\n!*.png\n!*.jpg\n!*.jpeg\n!*.gif\n!*.bmp\n!*.svg\n!*.webp\n!*.mp4\n!*.webm\n!*.mov\n!*.avi\n!*.mkv\n!*.mp3\n!*.wav\n!*.ogg\n!*.m4a\n!*/\n"
+
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
+		ioutil.WriteFile(gitignorePath, []byte(defaultGitignore), 0644)
+	} else {
+		// Mevcut dosyayı oku, eğer eski versiyonsa güncelle
+		content, err := ioutil.ReadFile(gitignorePath)
+		if err == nil && string(content) == "*\n!*.md\n!*/\n" {
+			ioutil.WriteFile(gitignorePath, []byte(defaultGitignore), 0644)
+		}
 	}
 
 	syncDatabase()
@@ -110,9 +120,110 @@ func main() {
 	http.HandleFunc("/api/auth/github/poll", loggingMiddleware(handleGithubAuthPoll))
 	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo))              // GET (git info)
 	http.HandleFunc("/api/git/file-status", loggingMiddleware(handleGitFileStatus)) // GET (check if file is tracked)
+	http.HandleFunc("/api/upload", loggingMiddleware(handleUpload))                 // POST (upload image)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10 MB limit
+	if err != nil {
+		http.Error(w, "File too large", http.StatusBadRequest)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error retrieving file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Create assets directory
+	assetsDir := filepath.Join(notesDir, "assets", "images")
+	if err := os.MkdirAll(assetsDir, 0755); err != nil {
+		http.Error(w, "Failed to create assets directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate unique filename
+	ext := filepath.Ext(handler.Filename)
+	if ext == "" {
+		ext = ".png" // Default to png if no extension
+	}
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(assetsDir, filename)
+
+	// Save file
+	dst, err := os.Create(filePath)
+	if err != nil {
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		http.Error(w, "Failed to write file", http.StatusInternalServerError)
+		return
+	}
+
+	// Git operations
+	mu.Lock()
+	defer mu.Unlock()
+
+	relPath := filepath.Join("assets", "images", filename)
+
+	// 1. Add
+	if err := runGitCommand("add", relPath); err != nil {
+		log.Println("Git add failed:", err)
+		// Continue anyway, maybe it's already added?
+	}
+
+	// 2. Commit
+	if err := runGitCommand("commit", "-m", "Upload asset: "+filename); err != nil {
+		log.Println("Git commit failed:", err)
+	}
+
+	// 3. Push
+	if err := runGitCommand("push", "origin", "main"); err != nil {
+		log.Println("Git push failed:", err)
+		// We can still return the URL, but it might not be accessible yet if it's a new file
+	}
+
+	// Construct URL
+	// RepoURL: https://github.com/user/repo.git
+	// Raw URL: https://raw.githubusercontent.com/user/repo/main/assets/filename
+
+	repoURL := config.RepoURL
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+
+	// Convert github.com URL to raw.githubusercontent.com
+	// This is a heuristic and might need adjustment for other providers (GitLab, etc.)
+	var downloadURL string
+	if strings.Contains(repoURL, "github.com") {
+		rawBase := strings.Replace(repoURL, "github.com", "raw.githubusercontent.com", 1)
+		downloadURL = fmt.Sprintf("%s/main/%s", rawBase, strings.ReplaceAll(relPath, "\\", "/"))
+	} else {
+		// Fallback for others or local usage
+		downloadURL = fmt.Sprintf("%s/raw/main/%s", repoURL, strings.ReplaceAll(relPath, "\\", "/"))
+	}
+
+	response := map[string]string{
+		"url":       downloadURL,
+		"filename":  filename,
+		"localPath": relPath,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 func handleMove(w http.ResponseWriter, r *http.Request) {
