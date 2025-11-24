@@ -64,6 +64,7 @@ import java.util.Set;
 import javafx.scene.Node;
 import javafx.stage.Modality;
 import javafx.scene.layout.Pane;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class App extends Application {
 
@@ -847,9 +848,11 @@ public class App extends Application {
     }
     
     private void showCustomInputDialog(String title, String prompt, java.util.function.Consumer<String> onConfirm) {
-        Dialog<String> dialog = new Dialog<>();
-        dialog.initStyle(StageStyle.UNDECORATED);
-        
+        Stage dialogStage = new Stage();
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+        dialogStage.initOwner(mainLayout.getScene().getWindow());
+
         VBox content = new VBox(15);
         content.getStyleClass().add("custom-dialog");
         content.setPadding(new Insets(20));
@@ -867,17 +870,33 @@ public class App extends Application {
         
         Button btnCancel = new Button("İptal");
         btnCancel.getStyleClass().add("dialog-button-cancel");
-        btnCancel.setOnAction(e -> dialog.setResult(null));
+        btnCancel.setOnAction(e -> dialogStage.close());
         
         Button btnOk = new Button("Tamam");
         btnOk.getStyleClass().add("dialog-button-ok");
-        btnOk.setOnAction(e -> dialog.setResult(input.getText()));
+        btnOk.setOnAction(e -> {
+            String result = input.getText();
+            if (result != null && !result.isEmpty()) {
+                onConfirm.accept(result);
+            }
+            dialogStage.close();
+        });
         
         buttons.getChildren().addAll(btnCancel, btnOk);
         content.getChildren().addAll(header, input, buttons);
         
-        dialog.getDialogPane().setContent(content);
-        dialog.getDialogPane().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+        Scene scene = new Scene(content);
+        scene.setFill(Color.TRANSPARENT);
+        scene.getStylesheets().add(getThemeStylesheet());
+        
+        dialogStage.setScene(scene);
+        
+        // Center on owner
+        dialogStage.setOnShown(e -> {
+            Stage owner = (Stage) dialogStage.getOwner();
+            dialogStage.setX(owner.getX() + (owner.getWidth() - dialogStage.getWidth()) / 2);
+            dialogStage.setY(owner.getY() + (owner.getHeight() - dialogStage.getHeight()) / 2);
+        });
         
         // Enable dragging
         final double[] xOffset = {0};
@@ -887,15 +906,23 @@ public class App extends Application {
             yOffset[0] = event.getSceneY();
         });
         content.setOnMouseDragged(event -> {
-            dialog.setX(event.getScreenX() - xOffset[0]);
-            dialog.setY(event.getScreenY() - yOffset[0]);
+            dialogStage.setX(event.getScreenX() - xOffset[0]);
+            dialogStage.setY(event.getScreenY() - yOffset[0]);
         });
 
-        dialog.showAndWait().ifPresent(result -> {
-            if (result != null && !result.isEmpty()) {
-                onConfirm.accept(result);
-            }
-        });
+        dialogStage.showAndWait();
+    }
+
+    private String getThemeStylesheet() {
+        if ("Light".equals(currentTheme)) {
+            return getClass().getResource("light_theme.css").toExternalForm();
+        } else if ("Tokyo Night".equals(currentTheme)) {
+            return getClass().getResource("tokyo_night.css").toExternalForm();
+        } else if ("Retro Night".equals(currentTheme)) {
+            return getClass().getResource("retro_night.css").toExternalForm();
+        } else {
+            return getClass().getResource("styles.css").toExternalForm();
+        }
     }
 
     private void togglePreview() {
@@ -1389,13 +1416,90 @@ public class App extends Application {
     }
 
     private void deleteNote(TreeItem<String> item) {
-        if (item == null || !item.isLeaf()) return;
+        if (item == null) return;
 
-        String filename = buildPath(item);
-        noteService.deleteNote(filename).thenRun(() -> Platform.runLater(() -> {
-            clearEditor();
+        String path = buildPath(item);
+        
+        if (!item.isLeaf()) {
+            if (!showCustomConfirmationDialog("Klasör Sil", "Klasörü silmek istediğinize emin misiniz?", 
+                "Bu işlem klasörü ve içindeki tüm dosyaları kalıcı olarak silecektir:\n" + path)) {
+                return;
+            }
+        }
+
+        noteService.deleteNote(path).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
+            String currentTitle = titleField.getText();
+            if (currentTitle != null && (currentTitle.equals(path) || currentTitle.startsWith(path + "/"))) {
+                clearEditor();
+            }
         }));
+    }
+
+    private boolean showCustomConfirmationDialog(String title, String header, String contentText) {
+        AtomicBoolean confirmed = new AtomicBoolean(false);
+        Stage dialogStage = new Stage();
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+        dialogStage.initOwner(mainLayout.getScene().getWindow());
+
+        VBox content = new VBox(20);
+        content.getStyleClass().add("custom-dialog");
+        content.setPadding(new Insets(20));
+        content.setPrefWidth(450);
+        
+        Label headerLabel = new Label(title);
+        headerLabel.getStyleClass().add("dialog-header");
+        
+        Label messageLabel = new Label(header + "\n\n" + contentText);
+        messageLabel.setWrapText(true);
+        messageLabel.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 14px;");
+        
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        
+        Button btnCancel = new Button("İptal");
+        btnCancel.getStyleClass().add("dialog-button-cancel");
+        btnCancel.setOnAction(e -> dialogStage.close());
+        
+        Button btnOk = new Button("Evet, Sil");
+        btnOk.getStyleClass().add("dialog-button-secondary"); // Red style
+        btnOk.setStyle("-fx-background-color: #e06c75; -fx-text-fill: white; -fx-border-color: #e06c75;");
+        btnOk.setOnAction(e -> {
+            confirmed.set(true);
+            dialogStage.close();
+        });
+        
+        buttons.getChildren().addAll(btnCancel, btnOk);
+        content.getChildren().addAll(headerLabel, messageLabel, buttons);
+        
+        Scene scene = new Scene(content);
+        scene.setFill(Color.TRANSPARENT);
+        scene.getStylesheets().add(getThemeStylesheet());
+        
+        dialogStage.setScene(scene);
+        
+        // Center on owner
+        dialogStage.setOnShown(e -> {
+            Stage owner = (Stage) dialogStage.getOwner();
+            dialogStage.setX(owner.getX() + (owner.getWidth() - dialogStage.getWidth()) / 2);
+            dialogStage.setY(owner.getY() + (owner.getHeight() - dialogStage.getHeight()) / 2);
+        });
+        
+        // Enable dragging
+        final double[] xOffset = {0};
+        final double[] yOffset = {0};
+        content.setOnMousePressed(event -> {
+            xOffset[0] = event.getSceneX();
+            yOffset[0] = event.getSceneY();
+        });
+        content.setOnMouseDragged(event -> {
+            dialogStage.setX(event.getScreenX() - xOffset[0]);
+            dialogStage.setY(event.getScreenY() - yOffset[0]);
+        });
+        
+        dialogStage.showAndWait();
+        return confirmed.get();
     }
     
     private void deleteNote() {
@@ -1765,12 +1869,60 @@ public class App extends Application {
         }
     }
 
-    private void showAlert(String title, String content) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(content);
-        alert.showAndWait();
+    private void showAlert(String title, String contentText) {
+        Stage dialogStage = new Stage();
+        dialogStage.initModality(Modality.APPLICATION_MODAL);
+        dialogStage.initStyle(StageStyle.TRANSPARENT);
+        dialogStage.initOwner(mainLayout.getScene().getWindow());
+
+        VBox content = new VBox(20);
+        content.getStyleClass().add("custom-dialog");
+        content.setPadding(new Insets(20));
+        content.setPrefWidth(400);
+        
+        Label headerLabel = new Label(title);
+        headerLabel.getStyleClass().add("dialog-header");
+        
+        Label messageLabel = new Label(contentText);
+        messageLabel.setWrapText(true);
+        messageLabel.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 14px;");
+        
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        
+        Button btnOk = new Button("Tamam");
+        btnOk.getStyleClass().add("dialog-button-ok");
+        btnOk.setOnAction(e -> dialogStage.close());
+        
+        buttons.getChildren().addAll(btnOk);
+        content.getChildren().addAll(headerLabel, messageLabel, buttons);
+        
+        Scene scene = new Scene(content);
+        scene.setFill(Color.TRANSPARENT);
+        scene.getStylesheets().add(getThemeStylesheet());
+        
+        dialogStage.setScene(scene);
+        
+        // Center on owner
+        dialogStage.setOnShown(e -> {
+            Stage owner = (Stage) dialogStage.getOwner();
+            dialogStage.setX(owner.getX() + (owner.getWidth() - dialogStage.getWidth()) / 2);
+            dialogStage.setY(owner.getY() + (owner.getHeight() - dialogStage.getHeight()) / 2);
+        });
+        
+        // Enable dragging
+        final double[] xOffset = {0};
+        final double[] yOffset = {0};
+        content.setOnMousePressed(event -> {
+            xOffset[0] = event.getSceneX();
+            yOffset[0] = event.getSceneY();
+        });
+        content.setOnMouseDragged(event -> {
+            dialogStage.setX(event.getScreenX() - xOffset[0]);
+            dialogStage.setY(event.getScreenY() - yOffset[0]);
+        });
+
+        dialogStage.showAndWait();
     }
 
     private Button createStartAction(String title, String description, String icon) {
@@ -1802,6 +1954,7 @@ public class App extends Application {
         btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 8 15;");
         btn.setOnMouseEntered(e -> btn.setStyle("-fx-background-color: #2c313a; -fx-cursor: hand; -fx-padding: 8 15; -fx-background-radius: 5;"));
         btn.setOnMouseExited(e -> btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 8 15;"));
+        
         
         return btn;
     }
@@ -1916,7 +2069,13 @@ public class App extends Application {
                     setContextMenu(contextMenu);
                 } else {
                     setGraphic(createIcon(FOLDER_ICON, "#d19a66"));
-                    setContextMenu(null);
+                    
+                    // Context Menu for Folders
+                    ContextMenu contextMenu = new ContextMenu();
+                    MenuItem deleteItem = new MenuItem("Sil");
+                    deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
+                    contextMenu.getItems().add(deleteItem);
+                    setContextMenu(contextMenu);
                 }
             }
         }

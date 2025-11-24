@@ -62,6 +62,18 @@ public class SettingsDialog extends Stage {
     private VBox generalView;
     private VBox appearanceView;
 
+    private String getThemeStylesheet(String theme) {
+        if ("Light".equals(theme)) {
+            return getClass().getResource("light_theme.css").toExternalForm();
+        } else if ("Tokyo Night".equals(theme)) {
+            return getClass().getResource("tokyo_night.css").toExternalForm();
+        } else if ("Retro Night".equals(theme)) {
+            return getClass().getResource("retro_night.css").toExternalForm();
+        } else {
+            return getClass().getResource("styles.css").toExternalForm();
+        }
+    }
+
     public SettingsDialog(NoteService noteService, AppConfig currentConfig, Consumer<String> onThemeChange) {
         this.noteService = noteService;
         this.currentConfig = currentConfig;
@@ -111,7 +123,7 @@ public class SettingsDialog extends Stage {
 
         Scene scene = new Scene(root);
         scene.setFill(Color.TRANSPARENT);
-        scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+        scene.getStylesheets().add(getThemeStylesheet(originalTheme));
         setScene(scene);
 
         // Drag Logic
@@ -216,15 +228,7 @@ public class SettingsDialog extends Stage {
                     // Re-apply custom styles to this dialog
                     if (getScene() != null) {
                         getScene().getStylesheets().clear();
-                        if ("Light".equals(newVal)) {
-                            getScene().getStylesheets().add(getClass().getResource("light_theme.css").toExternalForm());
-                        } else if ("Tokyo Night".equals(newVal)) {
-                            getScene().getStylesheets().add(getClass().getResource("tokyo_night.css").toExternalForm());
-                        } else if ("Retro Night".equals(newVal)) {
-                            getScene().getStylesheets().add(getClass().getResource("retro_night.css").toExternalForm());
-                        } else {
-                            getScene().getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
-                        }
+                        getScene().getStylesheets().add(getThemeStylesheet(newVal));
                     }
                 } catch (Exception e) {
                     logger.log(Level.WARNING, "Failed to apply theme: " + newVal, e);

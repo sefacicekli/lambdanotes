@@ -38,6 +38,7 @@ type AppConfig struct {
 	Token           string `json:"token"`
 	Username        string `json:"username"`
 	Email           string `json:"email"`
+	Theme           string `json:"theme"`
 	EditorFontSize  int    `json:"editorFontSize"`
 	ShowLineNumbers bool   `json:"showLineNumbers"`
 }
@@ -230,10 +231,18 @@ func handleNoteDetail(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == "DELETE" {
 		mu.Lock()
 		defer mu.Unlock()
-		os.Remove(path)
 
-		// Update DB
-		_, err := db.Exec("DELETE FROM notes WHERE path = ?", filename)
+		// Recursive delete for directories
+		err := os.RemoveAll(path)
+		if err != nil {
+			log.Println("Error deleting file/directory:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Update DB: Delete the item itself and any children (if it's a directory)
+		// Note: path in DB is relative (e.g. "folder/note.md")
+		_, err = db.Exec("DELETE FROM notes WHERE path = ? OR path LIKE ?", filename, filename+"/%")
 		if err != nil {
 			log.Println("Error deleting from DB:", err)
 		}
