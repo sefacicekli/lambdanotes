@@ -2516,5 +2516,12 @@ public class App extends Application {
         // If tabs are enabled, mode switcher is in tab header, which is harder to update dynamically without full rebuild.
         // But updateTabLayout might handle it if we call it?
         // For now, let's assume basic refresh is enough.
+
+        // Restore status bar state
+        updatePreviewStatus();
+        if (editorArea != null) {
+            updateEditorStats(editorArea.getText());
+        }
+        updateGitStatus();
     }
 }
