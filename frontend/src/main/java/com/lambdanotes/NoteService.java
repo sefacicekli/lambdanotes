@@ -165,6 +165,31 @@ public class NoteService {
                 });
     }
 
+    public CompletableFuture<GitHubRepo> createRepository(String token, String name, String description, boolean isPrivate) {
+        logger.info("Creating new repository: " + name);
+        // auto_init: false ensures the repo is empty as requested
+        String json = String.format("{\"name\": \"%s\", \"description\": \"%s\", \"private\": %b, \"auto_init\": false}", 
+            name, description, isPrivate);
+            
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.github.com/user/repos"))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 201) {
+                        logger.severe("GitHub API Error (createRepository): " + response.body());
+                        throw new RuntimeException("GitHub API Error: " + response.body());
+                    }
+                    logger.info("Repository created successfully.");
+                    return gson.fromJson(response.body(), GitHubRepo.class);
+                });
+    }
+
     public static class GithubDeviceCodeResponse {
         public String device_code;
         public String user_code;

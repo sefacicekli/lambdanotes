@@ -411,15 +411,24 @@ public class SettingsDialog extends Stage {
         Label repoLabel = new Label(LanguageManager.get("settings.github.repo_select"));
         repoLabel.getStyleClass().add("settings-section-label");
         
+        HBox repoSelectionBox = new HBox(10);
         repoComboBox = new ComboBox<>();
         repoComboBox.setPromptText(LanguageManager.get("settings.github.repo_placeholder"));
         repoComboBox.setMaxWidth(Double.MAX_VALUE);
         repoComboBox.getStyleClass().add("settings-combo-box");
+        HBox.setHgrow(repoComboBox, Priority.ALWAYS);
+
+        Button createRepoBtn = new Button("+");
+        createRepoBtn.getStyleClass().add("dialog-button-secondary");
+        createRepoBtn.setTooltip(new Tooltip(LanguageManager.get("settings.github.create_new")));
+        createRepoBtn.setOnAction(e -> showCreateRepoDialog());
+        
+        repoSelectionBox.getChildren().addAll(repoComboBox, createRepoBtn);
         
         Label repoHint = new Label(LanguageManager.get("settings.github.repo_hint"));
         repoHint.getStyleClass().add("settings-hint-label");
         
-        repoSection.getChildren().addAll(repoLabel, repoComboBox, repoHint);
+        repoSection.getChildren().addAll(repoLabel, repoSelectionBox, repoHint);
         
         // Status & Info
         statusLabel = new Label("");
@@ -580,6 +589,116 @@ public class SettingsDialog extends Stage {
     public Optional<AppConfig> showAndWaitResult() {
         showAndWait();
         return Optional.ofNullable(result);
+    }
+
+    private void showCreateRepoDialog() {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initOwner(this);
+        dialog.initStyle(StageStyle.TRANSPARENT);
+        
+        VBox root = new VBox(15);
+        root.setPadding(new Insets(20));
+        root.setStyle("-fx-background-color: #2b2d30; -fx-text-fill: #dfe1e5; -fx-border-color: #43454a; -fx-border-width: 1;");
+        
+        // Custom Header
+        Label titleLabel = new Label(LanguageManager.get("settings.github.create_new_title"));
+        titleLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #dfe1e5;");
+        
+        // Name
+        VBox nameBox = new VBox(5);
+        Label nameLabel = new Label(LanguageManager.get("settings.github.repo_name"));
+        nameLabel.setStyle("-fx-text-fill: #dfe1e5;");
+        TextField nameField = new TextField();
+        nameField.getStyleClass().add("settings-text-field");
+        nameBox.getChildren().addAll(nameLabel, nameField);
+        
+        // Description
+        VBox descBox = new VBox(5);
+        Label descLabel = new Label(LanguageManager.get("settings.github.repo_desc"));
+        descLabel.setStyle("-fx-text-fill: #dfe1e5;");
+        TextField descField = new TextField();
+        descField.getStyleClass().add("settings-text-field");
+        descBox.getChildren().addAll(descLabel, descField);
+        
+        // Visibility
+        CheckBox privateCheck = new CheckBox(LanguageManager.get("settings.github.repo_private"));
+        privateCheck.setStyle("-fx-text-fill: #dfe1e5;");
+        privateCheck.setSelected(true);
+        
+        // Buttons
+        HBox buttons = new HBox(10);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        
+        Button cancelBtn = new Button(LanguageManager.get("dialog.cancel"));
+        cancelBtn.getStyleClass().add("dialog-button-cancel");
+        cancelBtn.setOnAction(e -> dialog.close());
+        
+        Button createBtn = new Button(LanguageManager.get("dialog.create"));
+        createBtn.getStyleClass().add("dialog-button-primary");
+        createBtn.setOnAction(e -> {
+            String name = nameField.getText().trim();
+            if (name.isEmpty()) {
+                nameField.setStyle("-fx-border-color: #e06c75;");
+                return;
+            }
+            
+            createBtn.setDisable(true);
+            String token = tokenField.getText();
+            if (token == null || token.isEmpty()) {
+                statusLabel.setText(LanguageManager.get("settings.status.enter_token"));
+                createBtn.setDisable(false);
+                dialog.close();
+                return;
+            }
+            
+            noteService.createRepository(token, name, descField.getText(), privateCheck.isSelected())
+                .thenAccept(repo -> Platform.runLater(() -> {
+                    repoComboBox.getItems().add(0, repo);
+                    repoComboBox.getSelectionModel().select(repo);
+                    dialog.close();
+                }))
+                .exceptionally(ex -> {
+                    Platform.runLater(() -> {
+                        createBtn.setDisable(false);
+                        Alert alert = new Alert(Alert.AlertType.ERROR);
+                        alert.setTitle(LanguageManager.get("dialog.error"));
+                        alert.setHeaderText(null);
+                        alert.setContentText(ex.getMessage());
+                        alert.showAndWait();
+                    });
+                    return null;
+                });
+        });
+        
+        buttons.getChildren().addAll(cancelBtn, createBtn);
+        
+        root.getChildren().addAll(titleLabel, nameBox, descBox, privateCheck, buttons);
+        
+        Scene scene = new Scene(root, 400, 350);
+        scene.setFill(Color.TRANSPARENT);
+        
+        // Drag Logic
+        final double[] xOffset = {0};
+        final double[] yOffset = {0};
+        root.setOnMousePressed(event -> {
+            xOffset[0] = event.getSceneX();
+            yOffset[0] = event.getSceneY();
+        });
+        root.setOnMouseDragged(event -> {
+            dialog.setX(event.getScreenX() - xOffset[0]);
+            dialog.setY(event.getScreenY() - yOffset[0]);
+        });
+
+        // Apply theme
+        if (currentConfig != null && currentConfig.getTheme() != null) {
+             scene.getStylesheets().add(getThemeStylesheet(currentConfig.getTheme()));
+        } else {
+             scene.getStylesheets().add(getThemeStylesheet("Dark"));
+        }
+        
+        dialog.setScene(scene);
+        dialog.showAndWait();
     }
 
     private void loadRepos() {
