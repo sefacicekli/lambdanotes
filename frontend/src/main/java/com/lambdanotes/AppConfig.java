@@ -10,6 +10,7 @@ public class AppConfig {
     private String theme = "Dark"; // Default theme
     private boolean showTabs = false; // Default show tabs
     private boolean showTitleInPreview = true; // Default show title in preview
+    private String language = "en"; // Default language
 
     public AppConfig(String repoUrl, String token, String username, String email) {
         this.repoUrl = repoUrl;
@@ -42,4 +43,7 @@ public class AppConfig {
 
     public boolean isShowTitleInPreview() { return showTitleInPreview; }
     public void setShowTitleInPreview(boolean showTitleInPreview) { this.showTitleInPreview = showTitleInPreview; }
+
+    public String getLanguage() { return language; }
+    public void setLanguage(String language) { this.language = language; }
 }

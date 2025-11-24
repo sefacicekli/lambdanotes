@@ -137,8 +137,12 @@ public class App extends Application {
     // Header Pane (Mode Switcher only)
     private AnchorPane headerPane;
 
+    private Stage primaryStage;
+    private AppConfig currentConfig;
+
     @Override
     public void start(Stage stage) {
+        this.primaryStage = stage;
         setupLogging();
         
         // Load Fonts
@@ -196,56 +200,7 @@ public class App extends Application {
         // Removed selection listener to prevent opening on right click.
         // Opening is now handled in DraggableTreeCell.setOnMouseClicked
 
-        
-        // Explorer Header (Label + Buttons)
-        HBox explorerHeader = new HBox(5);
-        explorerHeader.setAlignment(Pos.CENTER_LEFT);
-        explorerHeader.setPadding(new Insets(10, 10, 5, 10));
-        
-        Label sidebarLabel = new Label("EXPLORER");
-        sidebarLabel.getStyleClass().add("sidebar-header");
-        
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        
-        Button btnNewFile = new Button("📄");
-        btnNewFile.setTooltip(new Tooltip("Yeni Not"));
-        btnNewFile.getStyleClass().add("sidebar-action-button");
-        btnNewFile.setOnAction(e -> clearEditor());
-
-        Button btnNewFolder = new Button("📁");
-        btnNewFolder.setTooltip(new Tooltip("Yeni Klasör"));
-        btnNewFolder.getStyleClass().add("sidebar-action-button");
-        btnNewFolder.setOnAction(e -> createNewFolder());
-
-        Button btnCollapse = new Button("-");
-        btnCollapse.setTooltip(new Tooltip("Tümünü Daralt"));
-        btnCollapse.getStyleClass().add("sidebar-action-button");
-        btnCollapse.setOnAction(e -> collapseAll());
-
-        Button btnExpand = new Button("+");
-        btnExpand.setTooltip(new Tooltip("Tümünü Genişlet"));
-        btnExpand.getStyleClass().add("sidebar-action-button");
-        btnExpand.setOnAction(e -> expandAll());
-
-        explorerHeader.getChildren().addAll(sidebarLabel, spacer, btnNewFile, btnNewFolder, btnCollapse, btnExpand);
-
-        // Search Field
-        searchField = new TextField();
-        searchField.setPromptText("Ara...");
-        searchField.getStyleClass().add("search-field");
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> filterNotes(newVal));
-        
-        // Sidebar Top Container
-        VBox sidebarTop = new VBox(0, explorerHeader, searchField);
-        sidebarTop.setPadding(new Insets(0)); // Remove padding to let search field fill width
-
-        VBox sidebar = new VBox(sidebarTop, noteTreeView);
-        sidebar.getStyleClass().add("sidebar");
-        sidebar.setPadding(new Insets(0));
-        sidebar.setSpacing(0);
-        VBox.setVgrow(noteTreeView, Priority.ALWAYS);
-        mainLayout.setLeft(sidebar);
+        mainLayout.setLeft(createSidebar());
 
         // Main Content
         mainContent = new VBox();
@@ -254,7 +209,7 @@ public class App extends Application {
         mainContent.setSpacing(20);
 
         titleField = new TextField();
-        titleField.setPromptText("Not Başlığı");
+        titleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
         titleField.setPrefWidth(Double.MAX_VALUE);
         titleField.setMaxWidth(Double.MAX_VALUE);
         titleField.setAlignment(Pos.CENTER_LEFT);
@@ -277,7 +232,7 @@ public class App extends Application {
         splitPane.getStyleClass().add("main-split-pane");
         
         editorArea = new TextArea();
-        editorArea.setPromptText("Markdown yazmaya başla...");
+        editorArea.setPromptText(LanguageManager.get("editor.placeholder"));
         editorArea.getStyleClass().add("editor-area");
         editorArea.setWrapText(false); // Disable wrap for code editor feel and line number sync
         editorArea.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -347,7 +302,7 @@ public class App extends Application {
         emptyContent.setAlignment(Pos.CENTER);
         emptyContent.setMaxWidth(600);
         
-        Label emptyLabel = new Label("LambdaNotes");
+        Label emptyLabel = new Label(LanguageManager.get("app.title"));
         emptyLabel.setStyle("-fx-text-fill: #3e4451; -fx-font-size: 48px; -fx-font-weight: bold; -fx-opacity: 0.5;");
         
         VBox actionsBox = new VBox(10);
@@ -355,19 +310,19 @@ public class App extends Application {
         actionsBox.setMaxWidth(300);
         actionsBox.setStyle("-fx-padding: 20px;");
 
-        Label startLabel = new Label("Başlangıç");
+        Label startLabel = new Label(LanguageManager.get("empty.start"));
         startLabel.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 0 0 10 0;");
         
-        Button actionNewNote = createStartAction("Yeni Not Oluştur", "Yeni bir markdown dosyası oluştur", "📄");
+        Button actionNewNote = createStartAction(LanguageManager.get("empty.new_note"), LanguageManager.get("empty.new_note_desc"), "📄");
         actionNewNote.setOnAction(e -> clearEditor());
         
-        Button actionNewFolder = createStartAction("Yeni Klasör", "Notları düzenlemek için klasör ekle", "📁");
+        Button actionNewFolder = createStartAction(LanguageManager.get("empty.new_folder"), LanguageManager.get("empty.new_folder_desc"), "📁");
         actionNewFolder.setOnAction(e -> createNewFolder());
         
-        Button actionSync = createStartAction("Senkronize Et", "Notları GitHub ile eşitle", "🔄");
+        Button actionSync = createStartAction(LanguageManager.get("empty.sync"), LanguageManager.get("empty.sync_desc"), "🔄");
         actionSync.setOnAction(e -> syncNotes());
         
-        Button actionSettings = createStartAction("Ayarlar", "Tema ve bağlantı ayarlarını yapılandır", "⚙");
+        Button actionSettings = createStartAction(LanguageManager.get("empty.settings"), LanguageManager.get("empty.settings_desc"), "⚙");
         actionSettings.setOnAction(e -> openSettings());
 
         actionsBox.getChildren().addAll(startLabel, actionNewNote, actionNewFolder, actionSync, actionSettings);
@@ -389,7 +344,7 @@ public class App extends Application {
         scene.setFill(Color.TRANSPARENT);
         scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
         
-        stage.setTitle("LambdaNotes");
+        stage.setTitle(LanguageManager.get("app.title"));
         
         // Set Application Icon
         try {
@@ -420,13 +375,14 @@ public class App extends Application {
             logger.severe("Backend failed to start after multiple attempts.");
             Platform.runLater(() -> {
                 refreshNoteList(); // Try one last time or show error
-                statusLabel.setText("Backend Bağlantı Hatası!");
+                statusLabel.setText(LanguageManager.get("status.backend_error"));
             });
             return;
         }
 
         noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
             logger.info("Backend connected successfully.");
+            this.currentConfig = config; // Cache config
             applySettings(config);
             
             // Always load local notes first to ensure UI is not empty
@@ -469,10 +425,10 @@ public class App extends Application {
         checker.checkForUpdates(APP_VERSION).thenAccept(updateInfo -> {
             if (updateInfo != null) {
                 Platform.runLater(() -> showNotification(
-                    "Güncelleme Mevcut", 
-                    "Yeni sürüm (" + updateInfo.version + ") indirilebilir.", 
+                    LanguageManager.get("dialog.update_available"), 
+                    java.text.MessageFormat.format(LanguageManager.get("dialog.update_desc"), updateInfo.version), 
                     NotificationType.INFO, 
-                    "İndir", 
+                    LanguageManager.get("dialog.download"), 
                     () -> getHostServices().showDocument(updateInfo.url)
                 ));
             }
@@ -510,17 +466,17 @@ public class App extends Application {
         titleBar.setPadding(new Insets(0, 10, 0, 10)); // Remove vertical padding
         titleBar.setSpacing(10);
 
-        Label titleLabel = new Label("LambdaNotes");
+        Label titleLabel = new Label(LanguageManager.get("app.title"));
         titleLabel.getStyleClass().add("window-title");
         
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnSync = new Button("Sync");
+        Button btnSync = new Button(LanguageManager.get("titlebar.sync"));
         btnSync.setOnAction(e -> syncNotes());
         btnSync.getStyleClass().add("window-button");
 
-        Button btnSettings = new Button("Settings");
+        Button btnSettings = new Button(LanguageManager.get("titlebar.settings"));
         btnSettings.setOnAction(e -> openSettings());
         btnSettings.getStyleClass().add("window-button");
 
@@ -588,17 +544,17 @@ public class App extends Application {
                 case READING:
                     splitPane.getItems().add(previewPanel);
                     updatePreview(editorArea.getText());
-                    if (viewModeLabel != null) viewModeLabel.setText("Okuma Modu");
+                    if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.reading"));
                     break;
                 case WRITING:
                     splitPane.getItems().add(editorPanel);
-                    if (viewModeLabel != null) viewModeLabel.setText("Yazma Modu");
+                    if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.writing"));
                     break;
                 case SPLIT:
                     splitPane.getItems().addAll(editorPanel, previewPanel);
                     splitPane.setDividerPositions(0.5);
                     updatePreview(editorArea.getText());
-                    if (viewModeLabel != null) viewModeLabel.setText("Split Modu");
+                    if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.split"));
                     break;
             }
         }
@@ -652,11 +608,11 @@ public class App extends Application {
                 if (editorTabPane.getSelectionModel().getSelectedItem() == tab) {
                      updatePreview(editorArea.getText());
                 }
-                if (viewModeLabel != null) viewModeLabel.setText("Okuma Modu");
+                if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.reading"));
                 break;
             case WRITING:
                 tabSplitPane.getItems().add(tabEditorPanel);
-                if (viewModeLabel != null) viewModeLabel.setText("Yazma Modu");
+                if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.writing"));
                 break;
             case SPLIT:
                 tabSplitPane.getItems().addAll(tabEditorPanel, previewPanel);
@@ -664,7 +620,7 @@ public class App extends Application {
                 if (editorTabPane.getSelectionModel().getSelectedItem() == tab) {
                     updatePreview(editorArea.getText());
                 }
-                if (viewModeLabel != null) viewModeLabel.setText("Split Modu");
+                if (viewModeLabel != null) viewModeLabel.setText(LanguageManager.get("mode.split"));
                 break;
         }
     }
@@ -691,19 +647,19 @@ public class App extends Application {
         modeSwitcher = new HBox(0);
         modeSwitcher.getStyleClass().add("mode-switcher");
         
-        Button btnRead = new Button("Okuma");
+        Button btnRead = new Button(LanguageManager.get("mode.btn.read"));
         btnRead.setUserData(ViewMode.READING);
         btnRead.getStyleClass().add("mode-button");
         btnRead.getStyleClass().add("mode-button-left");
         btnRead.setOnAction(e -> setViewMode(ViewMode.READING));
         
-        Button btnWrite = new Button("Yazma");
+        Button btnWrite = new Button(LanguageManager.get("mode.btn.write"));
         btnWrite.setUserData(ViewMode.WRITING);
         btnWrite.getStyleClass().add("mode-button");
         btnWrite.getStyleClass().add("mode-button-center");
         btnWrite.setOnAction(e -> setViewMode(ViewMode.WRITING));
         
-        Button btnSplit = new Button("Split");
+        Button btnSplit = new Button(LanguageManager.get("mode.btn.split"));
         btnSplit.setUserData(ViewMode.SPLIT);
         btnSplit.getStyleClass().add("mode-button");
         btnSplit.getStyleClass().add("mode-button-right");
@@ -718,28 +674,28 @@ public class App extends Application {
     private void setupEditorContextMenu() {
         ContextMenu contextMenu = new ContextMenu();
         
-        MenuItem bold = new MenuItem("Kalın (Bold)");
+        MenuItem bold = new MenuItem(LanguageManager.get("context.bold"));
         bold.setOnAction(e -> insertFormatting("**", "**"));
         
-        MenuItem italic = new MenuItem("İtalik (Italic)");
+        MenuItem italic = new MenuItem(LanguageManager.get("context.italic"));
         italic.setOnAction(e -> insertFormatting("*", "*"));
         
-        MenuItem h1 = new MenuItem("Başlık 1 (H1)");
+        MenuItem h1 = new MenuItem(LanguageManager.get("context.h1"));
         h1.setOnAction(e -> insertFormatting("# ", ""));
         
-        MenuItem h2 = new MenuItem("Başlık 2 (H2)");
+        MenuItem h2 = new MenuItem(LanguageManager.get("context.h2"));
         h2.setOnAction(e -> insertFormatting("## ", ""));
         
-        MenuItem list = new MenuItem("Liste");
+        MenuItem list = new MenuItem(LanguageManager.get("context.list"));
         list.setOnAction(e -> insertFormatting("- ", ""));
         
-        MenuItem checkList = new MenuItem("Kontrol Listesi");
+        MenuItem checkList = new MenuItem(LanguageManager.get("context.checklist"));
         checkList.setOnAction(e -> insertFormatting("- [ ] ", ""));
         
-        MenuItem codeBlock = new MenuItem("Kod Bloğu");
+        MenuItem codeBlock = new MenuItem(LanguageManager.get("context.codeblock"));
         codeBlock.setOnAction(e -> insertFormatting("```\n", "\n```"));
         
-        MenuItem table = new MenuItem("Tablo Ekle");
+        MenuItem table = new MenuItem(LanguageManager.get("context.table"));
         table.setOnAction(e -> insertTextAtCursor(
             "| Başlık 1 | Başlık 2 |\n" +
             "|----------|----------|\n" +
@@ -843,7 +799,7 @@ public class App extends Application {
     }
 
     private void createNewFolder() {
-        showCustomInputDialog("Yeni Klasör", "Klasör Adı:", name -> {
+        showCustomInputDialog(LanguageManager.get("sidebar.new_folder"), LanguageManager.get("sidebar.new_folder") + ":", name -> {
             titleField.setText(name + "/yeni-not.md");
             editorArea.clear();
             editorArea.requestFocus();
@@ -871,11 +827,11 @@ public class App extends Application {
         HBox buttons = new HBox(10);
         buttons.setAlignment(Pos.CENTER_RIGHT);
         
-        Button btnCancel = new Button("İptal");
+        Button btnCancel = new Button(LanguageManager.get("dialog.cancel"));
         btnCancel.getStyleClass().add("dialog-button-cancel");
         btnCancel.setOnAction(e -> dialogStage.close());
         
-        Button btnOk = new Button("Tamam");
+        Button btnOk = new Button(LanguageManager.get("dialog.ok"));
         btnOk.getStyleClass().add("dialog-button-ok");
         btnOk.setOnAction(e -> {
             String result = input.getText();
@@ -951,35 +907,43 @@ public class App extends Application {
 
 
     private void openSettings() {
-        // Mevcut config'i al (bunu bir yerde saklamamız lazım, şimdilik servisten çekelim)
-        noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
-            SettingsDialog dialog = new SettingsDialog(noteService, config, this::applyTheme);
-            Optional<AppConfig> result = dialog.showAndWaitResult();
+        // Use current config if available, otherwise fetch
+        if (currentConfig != null) {
+            openSettingsDialog(currentConfig);
+        } else {
+            noteService.getConfig().thenAccept(config -> Platform.runLater(() -> {
+                this.currentConfig = config;
+                openSettingsDialog(config);
+            })).exceptionally(e -> {
+                Platform.runLater(() -> openSettingsDialog(null));
+                return null;
+            });
+        }
+    }
 
-            result.ifPresent(newConfig -> {
-                noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
-                    applySettings(newConfig);
-                    showAlert("Başarılı", "Ayarlar kaydedildi ve Git yapılandırıldı.");
-                })).exceptionally(e -> {
-                    Platform.runLater(() -> showAlert("Hata", "Ayarlar kaydedilemedi: " + e.getMessage()));
-                    return null;
-                });
+    private void openSettingsDialog(AppConfig config) {
+        SettingsDialog dialog = new SettingsDialog(noteService, config, this::applyTheme);
+        Optional<AppConfig> result = dialog.showAndWaitResult();
+
+        result.ifPresent(newConfig -> {
+            noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
+                this.currentConfig = newConfig; // Update local cache
+                applySettings(newConfig);
+                showAlert(LanguageManager.get("dialog.success"), LanguageManager.get("settings.saved"));
+            })).exceptionally(e -> {
+                Platform.runLater(() -> showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("status.save_failed") + ": " + e.getMessage()));
+                return null;
             });
-        })).exceptionally(e -> {
-            // Config çekilemezse boş aç
-            Platform.runLater(() -> {
-                SettingsDialog dialog = new SettingsDialog(noteService, null, this::applyTheme);
-                Optional<AppConfig> result = dialog.showAndWaitResult();
-                result.ifPresent(newConfig -> {
-                     noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> applySettings(newConfig)));
-                });
-            });
-            return null;
         });
     }
 
     private void applySettings(AppConfig config) {
         if (config == null) return;
+        
+        if (config.getLanguage() != null) {
+            LanguageManager.setLanguage(config.getLanguage());
+            refreshUI();
+        }
         
         if (config.getTheme() != null) {
             this.currentTheme = config.getTheme();
@@ -1363,19 +1327,19 @@ public class App extends Application {
         }
         
         if (title.isEmpty()) {
-            if (!silent) showAlert("Hata", "Başlık boş olamaz.");
+            if (!silent) showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("dialog.save_title_empty"));
             return;
         }
         Note note = new Note(title, editorArea.getText());
         noteService.saveNote(note).thenRun(() -> Platform.runLater(() -> {
             refreshNoteList();
             isSynced = false; // Mark as unsaved/unsynced
-            statusLabel.setText("Kaydedildi (Senkronize Edilmedi)");
-            if (!silent) showAlert("Başarılı", "Not kaydedildi.");
+            statusLabel.setText(LanguageManager.get("status.saved_unsynced"));
+            if (!silent) showAlert(LanguageManager.get("dialog.success"), LanguageManager.get("dialog.note_saved"));
         })).exceptionally(e -> {
             Platform.runLater(() -> {
-                statusLabel.setText("Kaydedilemedi!");
-                if (!silent) showAlert("Hata", "Not kaydedilemedi: " + e.getMessage());
+                statusLabel.setText(LanguageManager.get("status.save_failed"));
+                if (!silent) showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("status.save_failed") + ": " + e.getMessage());
             });
             return null;
         });
@@ -1391,8 +1355,8 @@ public class App extends Application {
         String path = buildPath(item);
         
         if (!item.isLeaf()) {
-            if (!showCustomConfirmationDialog("Klasör Sil", "Klasörü silmek istediğinize emin misiniz?", 
-                "Bu işlem klasörü ve içindeki tüm dosyaları kalıcı olarak silecektir:\n" + path)) {
+            if (!showCustomConfirmationDialog(LanguageManager.get("dialog.folder_delete_title"), LanguageManager.get("dialog.folder_delete_header"), 
+                java.text.MessageFormat.format(LanguageManager.get("dialog.folder_delete_content"), path))) {
                 return;
             }
         }
@@ -1428,11 +1392,11 @@ public class App extends Application {
         HBox buttons = new HBox(10);
         buttons.setAlignment(Pos.CENTER_RIGHT);
         
-        Button btnCancel = new Button("İptal");
+        Button btnCancel = new Button(LanguageManager.get("dialog.cancel"));
         btnCancel.getStyleClass().add("dialog-button-cancel");
         btnCancel.setOnAction(e -> dialogStage.close());
         
-        Button btnOk = new Button("Evet, Sil");
+        Button btnOk = new Button(LanguageManager.get("dialog.yes_delete"));
         btnOk.getStyleClass().add("dialog-button-secondary"); // Red style
         btnOk.setStyle("-fx-background-color: #e06c75; -fx-text-fill: white; -fx-border-color: #e06c75;");
         btnOk.setOnAction(e -> {
@@ -1482,9 +1446,9 @@ public class App extends Application {
         
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
             FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("PDF Olarak Kaydet");
+            fileChooser.setTitle(LanguageManager.get("dialog.pdf_title"));
             fileChooser.setInitialFileName(note.getFilename().replace(".md", ".pdf"));
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Dosyası", "*.pdf"));
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(LanguageManager.get("dialog.pdf_file"), "*.pdf"));
             File file = fileChooser.showSaveDialog(mainLayout.getScene().getWindow());
             
             if (file != null) {
@@ -1502,9 +1466,9 @@ public class App extends Application {
                         "</style></head><body>" + html + "</body></html>";
 
                     PdfConverterExtension.exportToPdf(file.getAbsolutePath(), styledHtml, "", parser.getOptions());
-                    showNotification("Başarılı", "PDF başarıyla oluşturuldu.", NotificationType.SUCCESS, "Aç", () -> getHostServices().showDocument(file.getAbsolutePath()));
+                    showNotification(LanguageManager.get("dialog.success"), LanguageManager.get("dialog.pdf_success"), NotificationType.SUCCESS, LanguageManager.get("dialog.pdf_open"), () -> getHostServices().showDocument(file.getAbsolutePath()));
                 } catch (Exception e) {
-                    showAlert("Hata", "PDF oluşturulurken hata oluştu: " + e.getMessage());
+                    showAlert(LanguageManager.get("dialog.error"), java.text.MessageFormat.format(LanguageManager.get("dialog.pdf_error"), e.getMessage()));
                     logger.log(Level.SEVERE, "PDF export failed", e);
                 }
             }
@@ -1536,7 +1500,7 @@ public class App extends Application {
         statusBar.setPadding(new Insets(5, 10, 5, 10));
         statusBar.setAlignment(Pos.CENTER_LEFT);
 
-        statusLabel = new Label("Hazır");
+        statusLabel = new Label(LanguageManager.get("status.ready"));
         statusLabel.getStyleClass().add("status-label");
 
         syncSpinner = new ProgressIndicator();
@@ -1546,13 +1510,13 @@ public class App extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        viewModeLabel = new Label("Okuma Modu");
+        viewModeLabel = new Label(LanguageManager.get("mode.reading"));
         viewModeLabel.getStyleClass().add("status-label");
 
         previewStatusLabel = new Label("");
         previewStatusLabel.getStyleClass().add("status-label"); // Use status-label style
 
-        editorStatsLabel = new Label("0 kelime  •  0 karakter");
+        editorStatsLabel = new Label("0 " + LanguageManager.get("status.words") + "  •  0 " + LanguageManager.get("status.chars"));
         editorStatsLabel.getStyleClass().add("status-label");
 
         branchLabel = new Label("main"); 
@@ -1660,7 +1624,7 @@ public class App extends Application {
     }
 
     private void syncNotes(Runnable onSuccess, boolean isBackground) {
-        statusLabel.setText("Senkronize ediliyor...");
+        statusLabel.setText(LanguageManager.get("status.syncing"));
         syncSpinner.setVisible(true);
         
         // Loading overlay göster (Sadece background değilse)
@@ -1670,7 +1634,7 @@ public class App extends Application {
             loadingOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
             
             ProgressIndicator pi = new ProgressIndicator();
-            Label loadingLabel = new Label("Senkronize ediliyor, lütfen bekleyin...");
+            Label loadingLabel = new Label(LanguageManager.get("status.syncing_wait"));
             loadingLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
             
             loadingOverlay.getChildren().addAll(pi, loadingLabel);
@@ -1685,7 +1649,7 @@ public class App extends Application {
             noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                 refreshNoteList();
                 isSynced = true; // Mark as synced
-                statusLabel.setText("Hazır");
+                statusLabel.setText(LanguageManager.get("status.ready"));
                 syncSpinner.setVisible(false);
                 if (!isBackground) {
                     rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
@@ -1697,10 +1661,10 @@ public class App extends Application {
                     onSuccess.run();
                 } else if (!isBackground) {
                     showNotification(
-                        "Senkronizasyon Başarılı", 
-                        "Notlar başarıyla senkronize edildi.", 
+                        LanguageManager.get("dialog.success"), 
+                        LanguageManager.get("status.synced"), 
                         NotificationType.SUCCESS, 
-                        "Repo'yu Aç", 
+                        LanguageManager.get("status.repo_open"), 
                         () -> getHostServices().showDocument(repoUrl)
                     );
                 }
@@ -1708,11 +1672,11 @@ public class App extends Application {
             })).exceptionally(e -> {
                 Platform.runLater(() -> {
                     refreshNoteList(); // Sync failed, but still load local notes
-                    statusLabel.setText("Hata");
+                    statusLabel.setText(LanguageManager.get("dialog.error"));
                     syncSpinner.setVisible(false);
                     if (!isBackground) {
                         rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
-                        showAlert("Hata", "Senkronizasyon hatası: " + e.getMessage());
+                        showAlert(LanguageManager.get("dialog.error"), java.text.MessageFormat.format(LanguageManager.get("status.sync_error"), e.getMessage()));
                     }
                     logger.severe("Sync failed: " + e.getMessage());
                 });
@@ -1724,7 +1688,7 @@ public class App extends Application {
                  noteService.syncNotes().thenRun(() -> Platform.runLater(() -> {
                     refreshNoteList();
                     isSynced = true; // Mark as synced
-                    statusLabel.setText("Hazır");
+                    statusLabel.setText(LanguageManager.get("status.ready"));
                     syncSpinner.setVisible(false);
                     if (!isBackground) {
                         rootStack.getChildren().remove(loadingOverlay);
@@ -1736,10 +1700,10 @@ public class App extends Application {
                         onSuccess.run();
                     } else if (!isBackground) {
                         showNotification(
-                            "Senkronizasyon Başarılı", 
-                            "Notlar başarıyla senkronize edildi.", 
+                            LanguageManager.get("dialog.success"), 
+                            LanguageManager.get("status.synced"), 
                             NotificationType.SUCCESS, 
-                            "GitHub'ı Aç", 
+                            LanguageManager.get("status.repo_open"), 
                             () -> getHostServices().showDocument("https://github.com")
                         );
                     }
@@ -1747,11 +1711,11 @@ public class App extends Application {
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {
                         refreshNoteList(); // Sync failed, but still load local notes
-                        statusLabel.setText("Hata");
+                        statusLabel.setText(LanguageManager.get("dialog.error"));
                         syncSpinner.setVisible(false);
                         if (!isBackground) {
                             rootStack.getChildren().remove(loadingOverlay);
-                            showAlert("Hata", "Senkronizasyon hatası: " + ex.getMessage());
+                            showAlert(LanguageManager.get("dialog.error"), java.text.MessageFormat.format(LanguageManager.get("status.sync_error"), ex.getMessage()));
                         }
                         logger.severe("Sync failed: " + ex.getMessage());
                     });
@@ -1771,9 +1735,9 @@ public class App extends Application {
         })).exceptionally(e -> {
             logger.log(Level.SEVERE, "Failed to refresh note list", e);
             Platform.runLater(() -> {
-                statusLabel.setText("Bağlantı Hatası!");
+                statusLabel.setText(LanguageManager.get("status.connection_error"));
                 // Optional: Show a placeholder in the tree view
-                TreeItem<String> errorRoot = new TreeItem<>("Bağlantı Hatası");
+                TreeItem<String> errorRoot = new TreeItem<>(LanguageManager.get("status.connection_error"));
                 noteTreeView.setRoot(errorRoot);
             });
             return null;
@@ -1857,9 +1821,9 @@ public class App extends Application {
     private void updatePreviewStatus() {
         if (previewStatusLabel == null) return;
         if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) {
-            previewStatusLabel.setText("Canlı • " + LocalTime.now().format(TIME_FORMATTER));
+            previewStatusLabel.setText(LanguageManager.get("status.live") + " • " + LocalTime.now().format(TIME_FORMATTER));
         } else {
-            previewStatusLabel.setText("Kapalı");
+            previewStatusLabel.setText(LanguageManager.get("status.off"));
         }
     }
 
@@ -1884,7 +1848,7 @@ public class App extends Application {
         HBox buttons = new HBox(10);
         buttons.setAlignment(Pos.CENTER_RIGHT);
         
-        Button btnOk = new Button("Tamam");
+        Button btnOk = new Button(LanguageManager.get("dialog.ok"));
         btnOk.getStyleClass().add("dialog-button-ok");
         btnOk.setOnAction(e -> dialogStage.close());
         
@@ -2053,17 +2017,17 @@ public class App extends Application {
                     // Context Menu
                     ContextMenu contextMenu = new ContextMenu();
                     
-                    MenuItem exportPdfItem = new MenuItem("PDF Olarak Dışarı Aktar");
+                    MenuItem exportPdfItem = new MenuItem(LanguageManager.get("context.export_pdf"));
                     exportPdfItem.setOnAction(e -> exportToPdf(getTreeItem()));
                     
-                    MenuItem revealItem = new MenuItem("Dosya Gezgininde Göster");
+                    MenuItem revealItem = new MenuItem(LanguageManager.get("context.reveal"));
                     revealItem.setOnAction(e -> revealInExplorer(getTreeItem()));
 
-                    MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
+                    MenuItem copyPermalinkItem = new MenuItem(LanguageManager.get("context.copy_permalink"));
                     copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
                     copyPermalinkItem.setVisible(false); // Default hidden
                     
-                    MenuItem deleteItem = new MenuItem("Sil");
+                    MenuItem deleteItem = new MenuItem(LanguageManager.get("context.delete"));
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
                     
                     contextMenu.getItems().addAll(exportPdfItem, revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
@@ -2082,14 +2046,14 @@ public class App extends Application {
                     // Context Menu for Folders
                     ContextMenu contextMenu = new ContextMenu();
                     
-                    MenuItem revealItem = new MenuItem("Dosya Gezgininde Göster");
+                    MenuItem revealItem = new MenuItem(LanguageManager.get("context.reveal"));
                     revealItem.setOnAction(e -> revealInExplorer(getTreeItem()));
 
-                    MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
+                    MenuItem copyPermalinkItem = new MenuItem(LanguageManager.get("context.copy_permalink"));
                     copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
                     copyPermalinkItem.setVisible(false); // Default hidden
                     
-                    MenuItem deleteItem = new MenuItem("Sil");
+                    MenuItem deleteItem = new MenuItem(LanguageManager.get("context.delete"));
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
                     
                     contextMenu.getItems().addAll(revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
@@ -2243,10 +2207,10 @@ public class App extends Application {
         content.setPrefWidth(480); // Wider for 3 buttons
         
         
-        Label header = new Label("Çıkış Onayı");
+        Label header = new Label(LanguageManager.get("dialog.exit_title"));
         header.getStyleClass().add("dialog-header");
         
-        Label message = new Label("Değişiklikler senkronize edilmedi. Ne yapmak istersiniz?");
+        Label message = new Label(LanguageManager.get("dialog.exit_message"));
         message.setWrapText(true);
         message.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 14px;");
         
@@ -2256,21 +2220,21 @@ public class App extends Application {
         // Result holder: 0=cancel, 1=exit, 2=sync&exit
         final int[] result = {0};
 
-        Button btnCancel = new Button("İptal");
+        Button btnCancel = new Button(LanguageManager.get("dialog.cancel"));
         btnCancel.getStyleClass().add("dialog-button-cancel");
         btnCancel.setOnAction(e -> {
             result[0] = 0;
             dialogStage.close();
         });
         
-        Button btnSyncAndExit = new Button("Senkronize Et ve Kapat");
+        Button btnSyncAndExit = new Button(LanguageManager.get("dialog.sync_exit"));
         btnSyncAndExit.getStyleClass().add("dialog-button-primary");
         btnSyncAndExit.setOnAction(e -> {
             result[0] = 2;
             dialogStage.close();
         });
 
-        Button btnExit = new Button("Kapat");
+        Button btnExit = new Button(LanguageManager.get("dialog.exit_anyway"));
         btnExit.getStyleClass().add("dialog-button-secondary");
         btnExit.setStyle("-fx-background-color: #e06c75; -fx-text-fill: white; -fx-border-color: #e06c75;"); // Red for danger
         btnExit.setOnAction(e -> {
@@ -2433,5 +2397,124 @@ public class App extends Application {
             Platform.runLater(() -> showNotification("Hata", "Permalink oluşturulamadı: " + e.getMessage(), NotificationType.ERROR, null, null));
             return null;
         });
+    }
+
+    private VBox createSidebar() {
+        // Explorer Header (Label + Buttons)
+        HBox explorerHeader = new HBox(5);
+        explorerHeader.setAlignment(Pos.CENTER_LEFT);
+        explorerHeader.setPadding(new Insets(10, 10, 5, 10));
+        
+        Label sidebarLabel = new Label(LanguageManager.get("sidebar.explorer"));
+        sidebarLabel.getStyleClass().add("sidebar-header");
+        
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        
+        Button btnNewFile = new Button("📄");
+        btnNewFile.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_note")));
+        btnNewFile.getStyleClass().add("sidebar-action-button");
+        btnNewFile.setOnAction(e -> clearEditor());
+
+        Button btnNewFolder = new Button("📁");
+        btnNewFolder.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_folder")));
+        btnNewFolder.getStyleClass().add("sidebar-action-button");
+        btnNewFolder.setOnAction(e -> createNewFolder());
+
+        Button btnCollapse = new Button("-");
+        btnCollapse.setTooltip(new Tooltip(LanguageManager.get("sidebar.collapse_all")));
+        btnCollapse.getStyleClass().add("sidebar-action-button");
+        btnCollapse.setOnAction(e -> collapseAll());
+
+        Button btnExpand = new Button("+");
+        btnExpand.setTooltip(new Tooltip(LanguageManager.get("sidebar.expand_all")));
+        btnExpand.getStyleClass().add("sidebar-action-button");
+        btnExpand.setOnAction(e -> expandAll());
+
+        explorerHeader.getChildren().addAll(sidebarLabel, spacer, btnNewFile, btnNewFolder, btnCollapse, btnExpand);
+
+        // Search Field
+        searchField = new TextField();
+        searchField.setPromptText(LanguageManager.get("sidebar.search"));
+        searchField.getStyleClass().add("search-field");
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> filterNotes(newVal));
+        
+        // Sidebar Top Container
+        VBox sidebarTop = new VBox(0, explorerHeader, searchField);
+        sidebarTop.setPadding(new Insets(0)); // Remove padding to let search field fill width
+
+        VBox sidebar = new VBox(sidebarTop, noteTreeView);
+        sidebar.getStyleClass().add("sidebar");
+        sidebar.setPadding(new Insets(0));
+        sidebar.setSpacing(0);
+        VBox.setVgrow(noteTreeView, Priority.ALWAYS);
+        
+        return sidebar;
+    }
+
+    private void updateEmptyState() {
+        if (emptyState == null) return;
+        emptyState.getChildren().clear();
+        
+        VBox emptyContent = new VBox(20);
+        emptyContent.setAlignment(Pos.CENTER);
+        emptyContent.setMaxWidth(600);
+        
+        Label emptyLabel = new Label(LanguageManager.get("app.title"));
+        emptyLabel.setStyle("-fx-text-fill: #3e4451; -fx-font-size: 48px; -fx-font-weight: bold; -fx-opacity: 0.5;");
+        
+        VBox actionsBox = new VBox(10);
+        actionsBox.setAlignment(Pos.CENTER_LEFT);
+        actionsBox.setMaxWidth(300);
+        actionsBox.setStyle("-fx-padding: 20px;");
+
+        Label startLabel = new Label(LanguageManager.get("empty.start"));
+        startLabel.setStyle("-fx-text-fill: #abb2bf; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 0 0 10 0;");
+        
+        Button actionNewNote = createStartAction(LanguageManager.get("empty.new_note"), LanguageManager.get("empty.new_note_desc"), "📄");
+        actionNewNote.setOnAction(e -> clearEditor());
+        
+        Button actionNewFolder = createStartAction(LanguageManager.get("empty.new_folder"), LanguageManager.get("empty.new_folder_desc"), "📁");
+        actionNewFolder.setOnAction(e -> createNewFolder());
+        
+        Button actionSync = createStartAction(LanguageManager.get("empty.sync"), LanguageManager.get("empty.sync_desc"), "🔄");
+        actionSync.setOnAction(e -> syncNotes());
+        
+        Button actionSettings = createStartAction(LanguageManager.get("empty.settings"), LanguageManager.get("empty.settings_desc"), "⚙");
+        actionSettings.setOnAction(e -> openSettings());
+
+        actionsBox.getChildren().addAll(startLabel, actionNewNote, actionNewFolder, actionSync, actionSettings);
+        
+        emptyContent.getChildren().addAll(emptyLabel, actionsBox);
+        emptyState.getChildren().add(emptyContent);
+    }
+
+    private void refreshUI() {
+        if (primaryStage == null) return;
+        
+        primaryStage.setTitle(LanguageManager.get("app.title"));
+        mainLayout.setTop(createTitleBar(primaryStage));
+        mainLayout.setLeft(createSidebar());
+        mainLayout.setBottom(createStatusBar());
+        
+        if (titleField != null) titleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
+        if (editorArea != null) editorArea.setPromptText(LanguageManager.get("editor.placeholder"));
+        
+        setupEditorContextMenu();
+        updateEmptyState();
+        
+        // Refresh mode switcher if visible
+        if (headerPane != null) {
+            headerPane.getChildren().removeIf(node -> node instanceof HBox); // Remove old mode switcher
+            HBox modeSwitch = createModeSwitcher();
+            AnchorPane.setRightAnchor(modeSwitch, 10.0);
+            AnchorPane.setTopAnchor(modeSwitch, 10.0);
+            AnchorPane.setBottomAnchor(modeSwitch, 5.0);
+            headerPane.getChildren().add(modeSwitch);
+        }
+        
+        // If tabs are enabled, mode switcher is in tab header, which is harder to update dynamically without full rebuild.
+        // But updateTabLayout might handle it if we call it?
+        // For now, let's assume basic refresh is enough.
     }
 }
