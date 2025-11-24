@@ -1090,7 +1090,7 @@ public class App extends Application {
         }
 
         // Determine colors based on theme
-        String textColor, bgColor, titleColor, codeBg, codeColor, borderColor, linkColor;
+        String textColor, bgColor, titleColor, codeBg, codeColor, borderColor, linkColor, buttonBg, buttonHover;
         
         if ("Light".equalsIgnoreCase(currentTheme)) {
             textColor = "#24292e";
@@ -1100,31 +1100,43 @@ public class App extends Application {
             codeColor = "#24292e";
             borderColor = "#e1e4e8";
             linkColor = "#0366d6";
+            buttonBg = "#e1e4e8";
+            buttonHover = "#d1d5da";
+        } else if ("Tokyo Night".equalsIgnoreCase(currentTheme)) {
+            textColor = "#a9b1d6";
+            bgColor = "transparent";
+            titleColor = "#c0caf5";
+            codeBg = "#1a1b26";
+            codeColor = "#c0caf5";
+            borderColor = "#292e42";
+            linkColor = "#7aa2f7";
+            buttonBg = "#292e42";
+            buttonHover = "#414868";
+        } else if ("Retro Night".equalsIgnoreCase(currentTheme)) {
+            textColor = "#fdfdfd";
+            bgColor = "transparent";
+            titleColor = "#ff7edb";
+            codeBg = "#2d2a2e";
+            codeColor = "#fcfcfa";
+            borderColor = "#ff7edb";
+            linkColor = "#ff7edb";
+            buttonBg = "#403e41";
+            buttonHover = "#5d5a5e";
         } else {
-            // Dark / Tokyo Night / Retro Night
-            // User requested darker/more visible text. 
-            // #abb2bf is standard OneDark. Let's make it brighter: #e6e6e6
+            // Dark (Default)
             textColor = "#e6e6e6"; 
-            bgColor = "transparent"; // Transparent to show app background
+            bgColor = "transparent";
             titleColor = "#e6e6e6";
-            codeBg = "#2c313a";
-            codeColor = "#98c379";
+            codeBg = "#282c34";
+            codeColor = "#abb2bf";
             borderColor = "#3e4451";
             linkColor = "#61afef";
+            buttonBg = "#3e4451";
+            buttonHover = "#4b5263";
         }
 
         // Check if title should be shown
-        boolean showTitle = true;
-        // We need to access the config to check showTitleInPreview
-        // Since we don't have direct access to config object here easily without passing it around,
-        // we can check the SettingsDialog static or store it in App.
-        // But wait, we have noteService.getConfig() which is async.
-        // Let's add a field `showTitleInPreview` to App.java and update it in applySettings.
-        // For now, default to true.
-        
         String titleHtml = "";
-        // We need to add showTitleInPreview field to App.java to control this.
-        // Assuming we will add it.
         if (this.showTitleInPreview) {
              titleHtml = "<div class='note-title'>" + title + "</div><hr class='title-separator'/>";
         }
@@ -1132,15 +1144,11 @@ public class App extends Application {
         // Determine Base URL for relative images
         String baseUrl = "";
         try {
-            // BackendManager sets working directory to ~/.lambdanotes
-            // But main.go uses ./notes relative to its working dir.
-            // So notes are in ~/.lambdanotes/notes
             String userHome = System.getProperty("user.home");
             File notesDir = new File(userHome, ".lambdanotes/notes");
             if (notesDir.exists()) {
                 baseUrl = notesDir.toURI().toURL().toExternalForm();
             } else {
-                // Fallback to current dir notes if running in dev mode
                 File devNotes = new File("notes");
                 if (devNotes.exists()) {
                     baseUrl = devNotes.toURI().toURL().toExternalForm();
@@ -1150,11 +1158,40 @@ public class App extends Application {
             logger.warning("Failed to determine base URL: " + e.getMessage());
         }
 
+        String copyText = LanguageManager.get("preview.copy");
+        String copiedText = LanguageManager.get("preview.copied");
+
         String styledHtml = "<html><head>" +
                 "<base href=\"" + baseUrl + "\">" +
                 "<link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css\">" +
                 "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>" +
                 "<script>hljs.highlightAll();</script>" +
+                "<script>" +
+                "function copyToClipboard(text, button) {" +
+                "  var textArea = document.createElement('textarea');" +
+                "  textArea.value = text;" +
+                "  document.body.appendChild(textArea);" +
+                "  textArea.select();" +
+                "  document.execCommand('copy');" +
+                "  document.body.removeChild(textArea);" +
+                "  var originalText = button.innerText;" +
+                "  button.innerText = '" + copiedText + "';" +
+                "  setTimeout(function() { button.innerText = originalText; }, 2000);" +
+                "}" +
+                "document.addEventListener('DOMContentLoaded', function() {" +
+                "  var blocks = document.querySelectorAll('pre');" +
+                "  blocks.forEach(function(block) {" +
+                "    var button = document.createElement('button');" +
+                "    button.className = 'copy-button';" +
+                "    button.innerText = '" + copyText + "';" +
+                "    button.onclick = function() {" +
+                "      var code = block.querySelector('code').innerText;" +
+                "      copyToClipboard(code, button);" +
+                "    };" +
+                "    block.appendChild(button);" +
+                "  });" +
+                "});" +
+                "</script>" +
                 "<style>" +
                 "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
                 "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
@@ -1168,9 +1205,12 @@ public class App extends Application {
                 "strong, b { color: " + textColor + "; font-weight: bold; }" +
                 "code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.9em; }" +
                 ":not(pre) > code { background-color: " + codeBg + "; padding: 2px 6px; border-radius: 4px; color: " + codeColor + "; }" +
-                "pre { background-color: " + codeBg + "; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid " + borderColor + "; margin-top: 10px; }" +
+                "pre { background-color: " + codeBg + "; padding: 10px; border-radius: 6px; overflow-x: auto; border: 1px solid " + borderColor + "; margin-top: 10px; position: relative; }" +
                 "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
                 ".hljs { background: transparent !important; }" +
+                ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: 'JetBrains Mono', sans-serif; }" +
+                "pre:hover .copy-button { opacity: 1; }" +
+                ".copy-button:hover { background-color: " + buttonHover + "; }" +
                 "blockquote { border-left: 4px solid " + linkColor + "; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
                 "a { color: " + linkColor + "; text-decoration: none; }" +
                 "a:hover { text-decoration: underline; }" +
