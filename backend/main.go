@@ -108,7 +108,8 @@ func main() {
 	http.HandleFunc("/api/config", loggingMiddleware(handleConfig))     // GET, POST (setup)
 	http.HandleFunc("/api/auth/github/start", loggingMiddleware(handleGithubAuthStart))
 	http.HandleFunc("/api/auth/github/poll", loggingMiddleware(handleGithubAuthPoll))
-	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo)) // GET (git info)
+	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo))              // GET (git info)
+	http.HandleFunc("/api/git/file-status", loggingMiddleware(handleGitFileStatus)) // GET (check if file is tracked)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
@@ -188,10 +189,11 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		path := filepath.Join(notesDir, note.Filename)
-		if !strings.HasSuffix(path, ".md") {
-			path += ".md"
+		if !strings.HasSuffix(note.Filename, ".md") {
+			note.Filename += ".md"
 		}
+
+		path := filepath.Join(notesDir, note.Filename)
 
 		// Alt klasör varsa oluştur
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -639,6 +641,17 @@ func syncDatabase() {
 	}
 }
 
+func runGitCommandOutput(args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = notesDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
 func handleGitInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -649,28 +662,22 @@ func handleGitInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get current branch
-	branchCmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	branchCmd.Dir = notesDir
-	branchOutput, err := branchCmd.Output()
-	branch := strings.TrimSpace(string(branchOutput))
+	branch, err := runGitCommandOutput("rev-parse", "--abbrev-ref", "HEAD")
+	branch = strings.TrimSpace(branch)
 	if err != nil {
 		branch = "main" // Default fallback
 	}
 
 	// Get current commit hash
-	commitCmd := exec.Command("git", "rev-parse", "HEAD")
-	commitCmd.Dir = notesDir
-	commitOutput, err := commitCmd.Output()
-	commit := strings.TrimSpace(string(commitOutput))
+	commit, err := runGitCommandOutput("rev-parse", "HEAD")
+	commit = strings.TrimSpace(commit)
 	if err != nil {
 		commit = ""
 	}
 
 	// Get remote URL
-	remoteCmd := exec.Command("git", "remote", "get-url", "origin")
-	remoteCmd.Dir = notesDir
-	remoteOutput, err := remoteCmd.Output()
-	remoteURL := strings.TrimSpace(string(remoteOutput))
+	remoteURL, err := runGitCommandOutput("remote", "get-url", "origin")
+	remoteURL = strings.TrimSpace(remoteURL)
 	// Clean up remote URL (remove auth info if present)
 	if strings.Contains(remoteURL, "@") {
 		parts := strings.Split(remoteURL, "@")
@@ -683,6 +690,63 @@ func handleGitInfo(w http.ResponseWriter, r *http.Request) {
 		"branch":    branch,
 		"commit":    commit,
 		"remoteUrl": remoteURL,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleGitFileStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract the file path from the query parameters
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "Missing file path", http.StatusBadRequest)
+		return
+	}
+
+	// Normalize the file path
+	absPath := filepath.Join(notesDir, filePath)
+	relPath, err := filepath.Rel(notesDir, absPath)
+	if err != nil {
+		http.Error(w, "Invalid file path", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the file is tracked by Git
+	tracked := false
+	output, err := runGitCommandOutput("ls-files", "--error-unmatch", relPath)
+	if err == nil {
+		tracked = true
+		output = strings.TrimSpace(output)
+	}
+
+	// Prepare the response
+	response := map[string]interface{}{
+		"tracked":  tracked,
+		"deleted":  false,
+		"modified": false,
+	}
+
+	// If the file is tracked, check its status
+	if tracked {
+		// Check if the file is deleted
+		if strings.HasPrefix(string(output), "fatal:") {
+			response["tracked"] = false
+			response["deleted"] = true
+		} else {
+			// Check if the file is modified
+			statusOutput, _ := runGitCommandOutput("diff", "--shortstat", "HEAD", relPath)
+			if strings.TrimSpace(statusOutput) != "" {
+				response["modified"] = true
+			}
+		}
 	}
 
 	json.NewEncoder(w).Encode(response)

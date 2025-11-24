@@ -249,5 +249,33 @@ public class NoteService {
                     return gson.fromJson(response.body(), GitInfo.class);
                 });
     }
+
+    public static class GitFileStatus {
+        public boolean tracked;
+    }
+
+    public CompletableFuture<Boolean> isNoteTracked(String filename) {
+        String encodedFilename;
+        try {
+            encodedFilename = java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8.toString());
+        } catch (Exception e) {
+            encodedFilename = filename;
+        }
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/file-status?path=" + encodedFilename))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        return false;
+                    }
+                    GitFileStatus status = gson.fromJson(response.body(), GitFileStatus.class);
+                    return status.tracked;
+                })
+                .exceptionally(e -> false);
+    }
 }
 

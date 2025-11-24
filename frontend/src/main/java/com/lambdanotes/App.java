@@ -108,6 +108,7 @@ public class App extends Application {
     private Label statusLabel;
     private ProgressIndicator syncSpinner;
     private StackPane rootStack;
+    private Label branchLabel;
     
     // Version
     private static final String APP_VERSION = "0.0.2";
@@ -430,6 +431,7 @@ public class App extends Application {
             
             // Always load local notes first to ensure UI is not empty
             refreshNoteList();
+            updateGitStatus();
             
             if (config != null && config.getRepoUrl() != null && !config.getRepoUrl().isEmpty()) {
                 syncNotes(true); // Auto-sync on startup (background mode)
@@ -1326,39 +1328,6 @@ public class App extends Application {
         editorBody.getStyleClass().add("panel-body");
         VBox.setVgrow(editorBody, Priority.ALWAYS);
         
-        // We don't need TitleField in the tab content if tabs are used?
-        // VS Code doesn't show title field in editor.
-        // But we use it for renaming/saving.
-        // Let's keep it for now, or maybe hide it?
-        // User said "tabler orta alanın en üstünde".
-        // If we have tabs, the tab title is the filename.
-        // But we might want to edit the filename.
-        // Let's keep the title field for now, but maybe style it differently or keep it as is.
-        // Wait, titleField is global.
-        // If we have tabs, each tab should probably have its own title field?
-        // Or we update the global title field when tab switches.
-        // I implemented updating global title field.
-        // So we don't need title field INSIDE the tab content.
-        // But createEditorPanel adds titleField.
-        
-        // Let's create a dummy spacer or just not add titleField here.
-        // But wait, where is the title field in Tab mode?
-        // If it's global, it should be outside the TabPane?
-        // Currently `mainContent` -> `headerPane` -> `editorTabPane`.
-        // `headerPane` has mode switcher.
-        // `titleField` is not in `mainContent` directly. It's in `editorPanel`.
-        
-        // If we use Tabs, we probably want the Title Field to be part of the "Header" or just hidden (edit via rename).
-        // But for now, let's add a local TextField or just reuse the global one logic?
-        // If I don't add it to the panel, it won't be shown.
-        // If I want it shown, I should add it.
-        // But `titleField` is a single instance. I can't add it to multiple tabs.
-        
-        // Solution: Create a new TextField for each tab?
-        // Or move `titleField` to `headerPane` (Global Header)?
-        // Moving it to global header makes sense for "Active File".
-        
-        // Let's try creating a new TextField for each tab.
         TextField tabTitleField = new TextField(filename);
         tabTitleField.setPromptText("Not Başlığı");
         tabTitleField.setPrefWidth(Double.MAX_VALUE);
@@ -1542,6 +1511,25 @@ public class App extends Application {
         }));
     }
 
+    private void updateGitStatus() {
+        noteService.getGitInfo().thenAccept(gitInfo -> Platform.runLater(() -> {
+            if (gitInfo != null && gitInfo.branch != null) {
+                branchLabel.setText(gitInfo.branch);
+                if (gitInfo.remoteUrl != null && !gitInfo.remoteUrl.isEmpty()) {
+                    String url = gitInfo.remoteUrl;
+                    if (url.endsWith(".git")) {
+                        url = url.substring(0, url.length() - 4);
+                    }
+                    final String finalUrl = url;
+                    branchLabel.setOnMouseClicked(e -> getHostServices().showDocument(finalUrl));
+                    branchLabel.setTooltip(new Tooltip(finalUrl));
+                }
+            }
+        })).exceptionally(e -> {
+            return null;
+        });
+    }
+
     private HBox createStatusBar() {
         HBox statusBar = new HBox(10);
         statusBar.getStyleClass().add("status-bar");
@@ -1567,8 +1555,9 @@ public class App extends Application {
         editorStatsLabel = new Label("0 kelime  •  0 karakter");
         editorStatsLabel.getStyleClass().add("status-label");
 
-        Label branchLabel = new Label("main*"); // Mock branch name
+        branchLabel = new Label("main"); 
         branchLabel.getStyleClass().add("status-branch");
+        branchLabel.setCursor(Cursor.HAND);
 
         statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
         return statusBar;
@@ -1702,6 +1691,8 @@ public class App extends Application {
                     rootStack.getChildren().remove(loadingOverlay); // Overlay'i kaldır
                 }
                 
+                updateGitStatus(); // Update branch info after sync
+
                 if (onSuccess != null) {
                     onSuccess.run();
                 } else if (!isBackground) {
@@ -1739,6 +1730,8 @@ public class App extends Application {
                         rootStack.getChildren().remove(loadingOverlay);
                     }
                     
+                    updateGitStatus(); // Update branch info after sync
+
                     if (onSuccess != null) {
                         onSuccess.run();
                     } else if (!isBackground) {
@@ -2000,7 +1993,7 @@ public class App extends Application {
                     event.acceptTransferModes(TransferMode.MOVE);
                 }
                 event.consume();
-                       });
+            });
 
             setOnDragDropped(event -> {
                 Dragboard db = event.getDragboard();
@@ -2068,11 +2061,20 @@ public class App extends Application {
 
                     MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
                     copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
+                    copyPermalinkItem.setVisible(false); // Default hidden
                     
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
                     
                     contextMenu.getItems().addAll(exportPdfItem, revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
+                    
+                    contextMenu.setOnShowing(e -> {
+                        String path = buildPath(getTreeItem());
+                        noteService.isNoteTracked(path).thenAccept(tracked -> {
+                            Platform.runLater(() -> copyPermalinkItem.setVisible(tracked));
+                        });
+                    });
+
                     setContextMenu(contextMenu);
                 } else {
                     setGraphic(createIcon(FOLDER_ICON, "#d19a66"));
@@ -2085,11 +2087,20 @@ public class App extends Application {
 
                     MenuItem copyPermalinkItem = new MenuItem("GitHub Permalink Kopyala");
                     copyPermalinkItem.setOnAction(e -> copyGitHubPermalink(getTreeItem()));
+                    copyPermalinkItem.setVisible(false); // Default hidden
                     
                     MenuItem deleteItem = new MenuItem("Sil");
                     deleteItem.setOnAction(e -> deleteNote(getTreeItem()));
                     
                     contextMenu.getItems().addAll(revealItem, copyPermalinkItem, new SeparatorMenuItem(), deleteItem);
+                    
+                    contextMenu.setOnShowing(e -> {
+                        String path = buildPath(getTreeItem());
+                        noteService.isNoteTracked(path).thenAccept(tracked -> {
+                            Platform.runLater(() -> copyPermalinkItem.setVisible(tracked));
+                        });
+                    });
+
                     setContextMenu(contextMenu);
                 }
             }
@@ -2378,6 +2389,8 @@ public class App extends Application {
         if (item == null) return;
         String relativePath = buildPath(item);
         boolean isFile = item.isLeaf();
+        
+        showNotification("İşleniyor", "Permalink hazırlanıyor...", NotificationType.INFO, null, null);
         
         noteService.getGitInfo().thenAccept(gitInfo -> Platform.runLater(() -> {
             if (gitInfo == null || gitInfo.commit == null || gitInfo.remoteUrl == null) {
