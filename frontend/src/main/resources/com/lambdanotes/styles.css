@@ -720,5 +720,67 @@
     -fx-text-fill: white;
 }
 
+/* Projects View */
+.projects-view {
+    -fx-background-color: #1e1f22;
+}
+
+.projects-view .list-view {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}
+
+.projects-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #abb2bf;
+    -fx-padding: 8px 12px;
+    -fx-font-size: 14px;
+    -fx-border-color: #2c313a;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.projects-view .list-cell:filled:selected, .projects-view .list-cell:filled:hover {
+    -fx-background-color: #2c313a;
+    -fx-text-fill: white;
+}
+
+/* Task Detail View */
+.task-detail-view {
+    -fx-background-color: #1e1f22;
+}
+
+/* Kanban Board */
+.kanban-column {
+    -fx-background-color: #21252b;
+    -fx-background-radius: 6px;
+    -fx-border-color: #181a1f;
+    -fx-border-radius: 6px;
+    -fx-border-width: 1px;
+}
+
+.kanban-header {
+    -fx-text-fill: #abb2bf;
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+    -fx-padding: 0 0 10px 0;
+    -fx-border-color: #282c34;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.kanban-card {
+    -fx-background-color: #282c34;
+    -fx-background-radius: 4px;
+    -fx-border-color: #3e4451;
+    -fx-border-radius: 4px;
+    -fx-border-width: 1px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 4, 0, 1, 1);
+    -fx-cursor: hand;
+}
+
+.kanban-card:hover {
+    -fx-border-color: #61afef;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 6, 0, 2, 2);
+}
+
 
 

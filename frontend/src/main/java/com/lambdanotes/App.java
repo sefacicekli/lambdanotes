@@ -130,6 +130,8 @@ public class App extends Application {
     private VBox activityBar;
     private Button btnExplorer;
     private Button btnGit;
+    private Button btnProjects;
+    private ProjectsView projectsView;
 
     private enum ViewMode {
         READING, WRITING, SPLIT
@@ -1021,8 +1023,9 @@ public class App extends Application {
         result.ifPresent(newConfig -> {
             noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
                 this.currentConfig = newConfig; // Update local cache
+                this.projectsView = null; // Reset projects view to reload with new config
                 applySettings(newConfig);
-                showAlert(LanguageManager.get("dialog.success"), LanguageManager.get("settings.saved"));
+                // Success alert removed as per user request
             })).exceptionally(e -> {
                 Platform.runLater(() -> showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("status.save_failed") + ": " + e.getMessage()));
                 return null;
@@ -1111,6 +1114,9 @@ public class App extends Application {
                 AnchorPane.setBottomAnchor(modeSwitcher, 5.0);
             }
         }
+        
+        // Restore the view mode to ensure correct layout
+        setViewMode(currentMode);
     }
 
     private void updateEditorStyle() {
@@ -2697,7 +2703,16 @@ public class App extends Application {
             switchSidebarView(gitHistoryView, btnGit);
         });
 
-        activityBar.getChildren().addAll(btnExplorer, btnGit);
+        btnProjects = createActivityButton("📋", "Projects");
+        btnProjects.setOnAction(e -> {
+            if (projectsView == null) {
+                projectsView = new ProjectsView(noteService, currentConfig, this::openTaskDetail);
+            }
+            projectsView.refresh();
+            switchSidebarView(projectsView, btnProjects);
+        });
+
+        activityBar.getChildren().addAll(btnExplorer, btnGit, btnProjects);
 
         // Sidebar Content
         sidebarContent = new StackPane();
@@ -2774,7 +2789,14 @@ public class App extends Application {
         
         primaryStage.setTitle(LanguageManager.get("app.title"));
         mainLayout.setTop(createTitleBar(primaryStage));
-        mainLayout.setLeft(createSidebar());
+        
+        // Update sidebar in split pane instead of replacing left of border pane
+        if (rootSplitPane.getItems().size() > 0) {
+            double[] dividers = rootSplitPane.getDividerPositions();
+            rootSplitPane.getItems().set(0, createSidebar());
+            rootSplitPane.setDividerPositions(dividers);
+        }
+        
         mainLayout.setBottom(createStatusBar());
         
         if (titleField != null) titleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
@@ -2929,6 +2951,23 @@ public class App extends Application {
         } else {
             // In classic mode, we replace the main content area
             // We replace the 2nd item of rootSplitPane
+            if (rootSplitPane.getItems().size() > 1) {
+                rootSplitPane.getItems().set(1, detailView);
+            } else {
+                rootSplitPane.getItems().add(detailView);
+            }
+        }
+    }
+
+    private void openTaskDetail(String itemId, String projectId) {
+        TaskDetailView detailView = new TaskDetailView(noteService, itemId, projectId);
+        
+        if (showTabs) {
+            Tab tab = new Tab("Task");
+            tab.setContent(detailView);
+            editorTabPane.getTabs().add(tab);
+            editorTabPane.getSelectionModel().select(tab);
+        } else {
             if (rootSplitPane.getItems().size() > 1) {
                 rootSplitPane.getItems().set(1, detailView);
             } else {

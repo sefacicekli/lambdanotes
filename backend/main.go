@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -125,9 +126,55 @@ func main() {
 	http.HandleFunc("/api/git/log", loggingMiddleware(handleGitLog))                // GET (git log)
 	http.HandleFunc("/api/git/commit/", loggingMiddleware(handleGitCommitDetail))   // GET (commit details)
 	http.HandleFunc("/api/git/diff", loggingMiddleware(handleGitDiff))              // GET (file diff)
+	http.HandleFunc("/api/github/graphql", loggingMiddleware(handleGithubGraphQL))  // POST (GraphQL proxy)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func handleGithubGraphQL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if config.Token == "" {
+		http.Error(w, "GitHub token not found", http.StatusUnauthorized)
+		return
+	}
+
+	// Read the body (GraphQL query)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading body", http.StatusBadRequest)
+		return
+	}
+
+	// Forward to GitHub
+	req, err := http.NewRequest("POST", "https://api.github.com/graphql", bytes.NewBuffer(body))
+	if err != nil {
+		http.Error(w, "Error creating request", http.StatusInternalServerError)
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Error sending request to GitHub", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Return GitHub's response
+	respBody, _ := ioutil.ReadAll(resp.Body)
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -590,7 +637,7 @@ func handleGithubAuthStart(w http.ResponseWriter, r *http.Request) {
 	// GitHub Device Flow başlat
 	data := url.Values{}
 	data.Set("client_id", githubClientID)
-	data.Set("scope", "repo") // Repo erişimi için scope
+	data.Set("scope", "repo project") // Repo ve Project erişimi için scope
 
 	req, err := http.NewRequest("POST", "https://github.com/login/device/code", strings.NewReader(data.Encode()))
 	if err != nil {

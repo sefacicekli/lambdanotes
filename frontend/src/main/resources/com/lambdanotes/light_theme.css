@@ -576,3 +576,32 @@
     -fx-background-color: transparent;
     -fx-alignment: TOP-RIGHT;
 }
+
+/* Projects View */
+.projects-view {
+    -fx-background-color: #ffffff;
+}
+
+.projects-view .list-view {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}
+
+.projects-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #24292e;
+    -fx-padding: 8px 12px;
+    -fx-font-size: 14px;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.projects-view .list-cell:filled:selected, .projects-view .list-cell:filled:hover {
+    -fx-background-color: #f1f8ff;
+    -fx-text-fill: #24292e;
+}
+
+/* Task Detail View */
+.task-detail-view {
+    -fx-background-color: #ffffff;
+}
