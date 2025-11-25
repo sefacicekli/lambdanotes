@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 
 public class NoteService {
     private static final Logger logger = Logger.getLogger(NoteService.class.getName());
-    private static final String API_URL = "http://localhost:8080/api";
+    private static final String API_URL = "http://localhost:3286/api";
     private final HttpClient client;
     private final Gson gson;
 
@@ -165,6 +165,31 @@ public class NoteService {
                 });
     }
 
+    public CompletableFuture<GitHubRepo> createRepository(String token, String name, String description, boolean isPrivate) {
+        logger.info("Creating new repository: " + name);
+        // auto_init: false ensures the repo is empty as requested
+        String json = String.format("{\"name\": \"%s\", \"description\": \"%s\", \"private\": %b, \"auto_init\": false}", 
+            name, description, isPrivate);
+            
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.github.com/user/repos"))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 201) {
+                        logger.severe("GitHub API Error (createRepository): " + response.body());
+                        throw new RuntimeException("GitHub API Error: " + response.body());
+                    }
+                    logger.info("Repository created successfully.");
+                    return gson.fromJson(response.body(), GitHubRepo.class);
+                });
+    }
+
     public static class GithubDeviceCodeResponse {
         public String device_code;
         public String user_code;
@@ -226,6 +251,183 @@ public class NoteService {
                         throw new RuntimeException("Failed to get config");
                     }
                     return gson.fromJson(response.body(), AppConfig.class);
+                });
+    }
+
+    public static class GitInfo {
+        public String branch;
+        public String commit;
+        public String remoteUrl;
+    }
+
+    public CompletableFuture<GitInfo> getGitInfo() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/info"))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get git info: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), GitInfo.class);
+                });
+    }
+
+    public static class GitFileStatus {
+        public boolean tracked;
+    }
+
+    public CompletableFuture<Boolean> isNoteTracked(String filename) {
+        String encodedFilename;
+        try {
+            encodedFilename = java.net.URLEncoder.encode(filename, java.nio.charset.StandardCharsets.UTF_8.toString());
+        } catch (Exception e) {
+            encodedFilename = filename;
+        }
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/file-status?path=" + encodedFilename))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        return false;
+                    }
+                    GitFileStatus status = gson.fromJson(response.body(), GitFileStatus.class);
+                    return status.tracked;
+                })
+                .exceptionally(e -> false);
+    }
+
+    public static class UploadResponse {
+        public String url;
+        public String filename;
+        public String localPath;
+    }
+
+    public CompletableFuture<UploadResponse> uploadImage(java.io.File file) {
+        String boundary = "---" + System.currentTimeMillis() + "---";
+        
+        HttpRequest.BodyPublisher bodyPublisher;
+        try {
+            bodyPublisher = ofMimeMultipartData(java.util.Map.of("file", file), boundary);
+        } catch (java.io.IOException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/upload"))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(bodyPublisher)
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Upload failed: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), UploadResponse.class);
+                });
+    }
+
+    // Helper for multipart body
+    private HttpRequest.BodyPublisher ofMimeMultipartData(java.util.Map<Object, Object> data, String boundary) throws java.io.IOException {
+        var byteArrays = new ArrayList<byte[]>();
+        byte[] separator = ("--" + boundary + "\r\nContent-Disposition: form-data; name=").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        for (var entry : data.entrySet()) {
+            byteArrays.add(separator);
+
+            if (entry.getValue() instanceof java.io.File) {
+                var file = (java.io.File) entry.getValue();
+                String path = file.toPath().toString();
+                String mimeType = java.nio.file.Files.probeContentType(file.toPath());
+                if (mimeType == null) mimeType = "application/octet-stream";
+                
+                byteArrays.add(("\"" + entry.getKey() + "\"; filename=\"" + file.getName() + "\"\r\nContent-Type: " + mimeType + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                byteArrays.add(java.nio.file.Files.readAllBytes(file.toPath()));
+                byteArrays.add("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            } else {
+                byteArrays.add(("\"" + entry.getKey() + "\"\r\n\r\n" + entry.getValue() + "\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
+        byteArrays.add(("--" + boundary + "--").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
+    }
+
+    public static class GitLogEntry {
+        public String hash;
+        public String author;
+        public String date;
+        public String message;
+        public List<String> parents;
+    }
+
+    public CompletableFuture<List<GitLogEntry>> getGitLog() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/log"))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get git log: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), new TypeToken<List<GitLogEntry>>(){}.getType());
+                });
+    }
+
+    public static class GitCommitDetail {
+        public String hash;
+        public String author;
+        public String date;
+        public String message;
+        public List<GitFileChange> files;
+    }
+
+    public static class GitFileChange {
+        public String status;
+        public String path;
+    }
+
+    public CompletableFuture<GitCommitDetail> getCommitDetail(String hash) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/commit/" + hash))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get commit detail: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), GitCommitDetail.class);
+                });
+    }
+
+    public CompletableFuture<String> getDiff(String hash, String path) {
+        String encodedPath;
+        try {
+            encodedPath = java.net.URLEncoder.encode(path, java.nio.charset.StandardCharsets.UTF_8.toString());
+        } catch (Exception e) {
+            encodedPath = path;
+        }
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/diff?commit=" + hash + "&path=" + encodedPath))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get diff: " + response.body());
+                    }
+                    return response.body();
                 });
     }
 }

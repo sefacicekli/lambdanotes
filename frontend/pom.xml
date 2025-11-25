@@ -31,6 +31,11 @@
             <artifactId>javafx-web</artifactId>
             <version>${javafx.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
         
         <!-- JSON İşleme -->
         <dependency>
@@ -58,6 +63,20 @@
             <groupId>com.vladsch.flexmark</groupId>
             <artifactId>flexmark-pdf-converter</artifactId>
             <version>0.64.8</version>
+        </dependency>
+
+        <!-- JUnit 5 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

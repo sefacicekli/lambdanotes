@@ -125,6 +125,14 @@ if %errorlevel% neq 0 (
 "@
 Set-Content -Path "$appDir\debug.bat" -Value $debugContent
 
+# --- 5.6 Create CLI Launcher (lambda.bat) ---
+Write-Host "5.6 Creating CLI Launcher..."
+$cliContent = @"
+@echo off
+start "" "%~dp0LambdaNotes.exe" %*
+"@
+Set-Content -Path "$appDir\lambda.bat" -Value $cliContent
+
 # --- 6. Run Inno Setup ---
 Write-Host "6. Creating Installer with Inno Setup..."
 $issFile = "$PWD\installer_config\setup.iss"

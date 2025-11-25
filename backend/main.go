@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,9 +12,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -22,7 +25,7 @@ const (
 	notesDir   = "./notes"
 	configFile = "./config.json"
 	dbFile     = "./notes.db"
-	port       = ":8080"
+	port       = ":3286"
 
 	githubClientID     = "Ov23liq3HVgaBCjZ6Pda"
 	githubClientSecret = "32560715b1ffd6ce2eb0474d8f23ac7948d24efd"
@@ -38,6 +41,7 @@ type AppConfig struct {
 	Token           string `json:"token"`
 	Username        string `json:"username"`
 	Email           string `json:"email"`
+	Theme           string `json:"theme"`
 	EditorFontSize  int    `json:"editorFontSize"`
 	ShowLineNumbers bool   `json:"showLineNumbers"`
 }
@@ -92,10 +96,18 @@ func main() {
 		os.Mkdir(notesDir, 0755)
 	}
 
-	// .gitignore oluştur (Sadece markdown dosyalarını takip et)
+	// .gitignore oluştur veya güncelle
 	gitignorePath := filepath.Join(notesDir, ".gitignore")
+	defaultGitignore := "*\n!*.md\n!*.png\n!*.jpg\n!*.jpeg\n!*.gif\n!*.bmp\n!*.svg\n!*.webp\n!*.mp4\n!*.webm\n!*.mov\n!*.avi\n!*.mkv\n!*.mp3\n!*.wav\n!*.ogg\n!*.m4a\n!*/\n"
+
 	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		ioutil.WriteFile(gitignorePath, []byte("*\n!*.md\n!*/\n"), 0644)
+		ioutil.WriteFile(gitignorePath, []byte(defaultGitignore), 0644)
+	} else {
+		// Mevcut dosyayı oku, eğer eski versiyonsa güncelle
+		content, err := ioutil.ReadFile(gitignorePath)
+		if err == nil && string(content) == "*\n!*.md\n!*/\n" {
+			ioutil.WriteFile(gitignorePath, []byte(defaultGitignore), 0644)
+		}
 	}
 
 	syncDatabase()
@@ -107,9 +119,115 @@ func main() {
 	http.HandleFunc("/api/config", loggingMiddleware(handleConfig))     // GET, POST (setup)
 	http.HandleFunc("/api/auth/github/start", loggingMiddleware(handleGithubAuthStart))
 	http.HandleFunc("/api/auth/github/poll", loggingMiddleware(handleGithubAuthPoll))
+	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo))              // GET (git info)
+	http.HandleFunc("/api/git/file-status", loggingMiddleware(handleGitFileStatus)) // GET (check if file is tracked)
+	http.HandleFunc("/api/upload", loggingMiddleware(handleUpload))                 // POST (upload image)
+	http.HandleFunc("/api/git/log", loggingMiddleware(handleGitLog))                // GET (git log)
+	http.HandleFunc("/api/git/commit/", loggingMiddleware(handleGitCommitDetail))   // GET (commit details)
+	http.HandleFunc("/api/git/diff", loggingMiddleware(handleGitDiff))              // GET (file diff)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10 MB limit
+	if err != nil {
+		http.Error(w, "File too large", http.StatusBadRequest)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error retrieving file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Create assets directory
+	assetsDir := filepath.Join(notesDir, "assets", "images")
+	if err := os.MkdirAll(assetsDir, 0755); err != nil {
+		http.Error(w, "Failed to create assets directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate unique filename
+	ext := filepath.Ext(handler.Filename)
+	if ext == "" {
+		ext = ".png" // Default to png if no extension
+	}
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	filePath := filepath.Join(assetsDir, filename)
+
+	// Save file
+	dst, err := os.Create(filePath)
+	if err != nil {
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		http.Error(w, "Failed to write file", http.StatusInternalServerError)
+		return
+	}
+
+	// Git operations
+	mu.Lock()
+	defer mu.Unlock()
+
+	relPath := filepath.Join("assets", "images", filename)
+
+	// 1. Add
+	if err := runGitCommand("add", relPath); err != nil {
+		log.Println("Git add failed:", err)
+		// Continue anyway, maybe it's already added?
+	}
+
+	// 2. Commit
+	if err := runGitCommand("commit", "-m", "Upload asset: "+filename); err != nil {
+		log.Println("Git commit failed:", err)
+	}
+
+	// 3. Push
+	if err := runGitCommand("push", "origin", "main"); err != nil {
+		log.Println("Git push failed:", err)
+		// We can still return the URL, but it might not be accessible yet if it's a new file
+	}
+
+	// Construct URL
+	// RepoURL: https://github.com/user/repo.git
+	// Raw URL: https://raw.githubusercontent.com/user/repo/main/assets/filename
+
+	repoURL := config.RepoURL
+	repoURL = strings.TrimSuffix(repoURL, ".git")
+
+	// Convert github.com URL to raw.githubusercontent.com
+	// This is a heuristic and might need adjustment for other providers (GitLab, etc.)
+	var downloadURL string
+	if strings.Contains(repoURL, "github.com") {
+		rawBase := strings.Replace(repoURL, "github.com", "raw.githubusercontent.com", 1)
+		downloadURL = fmt.Sprintf("%s/main/%s", rawBase, strings.ReplaceAll(relPath, "\\", "/"))
+	} else {
+		// Fallback for others or local usage
+		downloadURL = fmt.Sprintf("%s/raw/main/%s", repoURL, strings.ReplaceAll(relPath, "\\", "/"))
+	}
+
+	response := map[string]string{
+		"url":       downloadURL,
+		"filename":  filename,
+		"localPath": relPath,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 func handleMove(w http.ResponseWriter, r *http.Request) {
@@ -186,10 +304,11 @@ func handleNotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		path := filepath.Join(notesDir, note.Filename)
-		if !strings.HasSuffix(path, ".md") {
-			path += ".md"
+		if !strings.HasSuffix(note.Filename, ".md") {
+			note.Filename += ".md"
 		}
+
+		path := filepath.Join(notesDir, note.Filename)
 
 		// Alt klasör varsa oluştur
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -228,12 +347,35 @@ func handleNoteDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		json.NewEncoder(w).Encode(Note{Filename: filename, Content: string(content)})
 	} else if r.Method == "DELETE" {
+		log.Println("Processing DELETE request for:", filename)
 		mu.Lock()
 		defer mu.Unlock()
-		os.Remove(path)
 
-		// Update DB
-		_, err := db.Exec("DELETE FROM notes WHERE path = ?", filename)
+		// Check if it's a file and read content to find images
+		info, statErr := os.Stat(path)
+		if statErr == nil && !info.IsDir() {
+			contentBytes, readErr := ioutil.ReadFile(path)
+			if readErr == nil {
+				log.Println("Reading note content for image deletion...")
+				deleteNoteImages(string(contentBytes))
+			} else {
+				log.Println("Error reading note content:", readErr)
+			}
+		} else {
+			log.Println("Path is directory or stat failed:", path, statErr)
+		}
+
+		// Recursive delete for directories
+		err := os.RemoveAll(path)
+		if err != nil {
+			log.Println("Error deleting file/directory:", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Update DB: Delete the item itself and any children (if it's a directory)
+		// Note: path in DB is relative (e.g. "folder/note.md")
+		_, err = db.Exec("DELETE FROM notes WHERE path = ? OR path LIKE ?", filename, filename+"/%")
 		if err != nil {
 			log.Println("Error deleting from DB:", err)
 		}
@@ -263,11 +405,7 @@ func handleSync(w http.ResponseWriter, r *http.Request) {
 	defer mu.Unlock()
 
 	// 1. Değişiklikleri analiz et (Git status)
-	statusCmd := exec.Command("git", "status", "--porcelain")
-	statusCmd.Dir = notesDir
-	statusOutput, _ := statusCmd.Output()
-
-	changes := string(statusOutput)
+	changes, _ := runGitCommandOutput("status", "--porcelain")
 	var added, modified, deleted []string
 
 	lines := strings.Split(changes, "\n")
@@ -399,32 +537,40 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 
+		// Check if git config changed
+		gitChanged := config.RepoURL != newConfig.RepoURL ||
+			config.Token != newConfig.Token ||
+			config.Username != newConfig.Username ||
+			config.Email != newConfig.Email
+
 		config = newConfig
 		saveConfig()
 
-		// Git yapılandırması
-		// 1. Git init (eğer yoksa)
-		if _, err := os.Stat(filepath.Join(notesDir, ".git")); os.IsNotExist(err) {
-			runGitCommand("init")
-			runGitCommand("branch", "-M", "main")
-		}
+		// Git yapılandırması (Sadece değiştiyse)
+		if gitChanged {
+			// 1. Git init (eğer yoksa)
+			if _, err := os.Stat(filepath.Join(notesDir, ".git")); os.IsNotExist(err) {
+				runGitCommand("init")
+				runGitCommand("branch", "-M", "main")
+			}
 
-		// 2. Config ayarları
-		runGitCommand("config", "user.name", config.Username)
-		runGitCommand("config", "user.email", config.Email)
+			// 2. Config ayarları
+			runGitCommand("config", "user.name", config.Username)
+			runGitCommand("config", "user.email", config.Email)
 
-		// 3. Remote ekle/güncelle
-		runGitCommand("remote", "remove", "origin")
-		authURL := getAuthRepoURL()
-		if err := runGitCommand("remote", "add", "origin", authURL); err != nil {
-			log.Printf("Remote add error: %v", err)
-			http.Error(w, "Remote eklenemedi: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+			// 3. Remote ekle/güncelle
+			runGitCommand("remote", "remove", "origin")
+			authURL := getAuthRepoURL()
+			if err := runGitCommand("remote", "add", "origin", authURL); err != nil {
+				log.Printf("Remote add error: %v", err)
+				http.Error(w, "Remote eklenemedi: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 
-		// 4. İlk pull (eğer repo boş değilse)
-		if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
-			log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+			// 4. İlk pull (eğer repo boş değilse)
+			if err := runGitCommand("pull", "origin", "main", "--allow-unrelated-histories"); err != nil {
+				log.Println("Initial pull failed (repo might be empty or branch is not main):", err)
+			}
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -619,4 +765,322 @@ func syncDatabase() {
 	} else {
 		log.Println("Database sync complete.")
 	}
+}
+
+func runGitCommandOutput(args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = notesDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), nil
+}
+
+func handleGitInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get current branch
+	branch, err := runGitCommandOutput("rev-parse", "--abbrev-ref", "HEAD")
+	branch = strings.TrimSpace(branch)
+	if err != nil {
+		branch = "main" // Default fallback
+	}
+
+	// Get current commit hash
+	commit, err := runGitCommandOutput("rev-parse", "HEAD")
+	commit = strings.TrimSpace(commit)
+	if err != nil {
+		commit = ""
+	}
+
+	// Get remote URL
+	remoteURL, err := runGitCommandOutput("remote", "get-url", "origin")
+	remoteURL = strings.TrimSpace(remoteURL)
+	// Clean up remote URL (remove auth info if present)
+	if strings.Contains(remoteURL, "@") {
+		parts := strings.Split(remoteURL, "@")
+		if len(parts) > 1 {
+			remoteURL = "https://" + parts[1]
+		}
+	}
+
+	response := map[string]string{
+		"branch":    branch,
+		"commit":    commit,
+		"remoteUrl": remoteURL,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func deleteNoteImages(content string) {
+	log.Println("Scanning note content for images to delete...")
+	log.Printf("Content length: %d", len(content))
+	if len(content) > 0 {
+		preview := content
+		if len(content) > 200 {
+			preview = content[:200]
+		}
+		log.Printf("Content preview: %s", preview)
+	}
+
+	// Regex to find image links: ![...](url)
+	reMd := regexp.MustCompile(`!\[.*?\]\((.*?)\)`)
+	matchesMd := reMd.FindAllStringSubmatch(content, -1)
+
+	// Regex to find HTML image tags: src="..."
+	reHtml := regexp.MustCompile(`src=["'](.*?)["']`)
+	matchesHtml := reHtml.FindAllStringSubmatch(content, -1)
+
+	allMatches := append(matchesMd, matchesHtml...)
+
+	log.Printf("Found %d image matches in note content (Markdown: %d, HTML: %d)", len(allMatches), len(matchesMd), len(matchesHtml))
+
+	for _, match := range allMatches {
+		if len(match) > 1 {
+			urlStr := match[1]
+			log.Println("Checking image URL:", urlStr)
+			// Check if it contains "assets/images/"
+			if strings.Contains(urlStr, "assets/images/") {
+				// Extract filename
+				parts := strings.Split(urlStr, "assets/images/")
+				if len(parts) > 1 {
+					filename := parts[1]
+					// Clean up filename (remove query params if any)
+					filename = strings.Split(filename, "?")[0]
+					filename = strings.Split(filename, "#")[0]
+
+					log.Println("Extracted filename:", filename)
+
+					// Only proceed if filename doesn't contain slashes (security/simplicity)
+					if !strings.Contains(filename, "/") && !strings.Contains(filename, "\\") {
+						imagePath := filepath.Join(notesDir, "assets", "images", filename)
+						log.Println("Target image path:", imagePath)
+
+						// Check if file exists before deleting
+						if _, err := os.Stat(imagePath); err == nil {
+							log.Println("Deleting associated image:", imagePath)
+							err := os.Remove(imagePath)
+							if err != nil {
+								log.Println("Error deleting image:", err)
+							} else {
+								log.Println("Image deleted successfully")
+							}
+						} else {
+							log.Println("Image file not found at path:", imagePath)
+						}
+					} else {
+						log.Println("Filename contains slashes, skipping:", filename)
+					}
+				}
+			} else {
+				log.Println("URL does not contain 'assets/images/', skipping")
+			}
+		}
+	}
+}
+
+func handleGitFileStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract the file path from the query parameters
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "Missing file path", http.StatusBadRequest)
+		return
+	}
+
+	// Normalize the file path
+	absPath := filepath.Join(notesDir, filePath)
+	relPath, err := filepath.Rel(notesDir, absPath)
+	if err != nil {
+		http.Error(w, "Invalid file path", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the file is tracked by Git
+	tracked := false
+	output, err := runGitCommandOutput("ls-files", "--error-unmatch", relPath)
+	if err == nil {
+		tracked = true
+		output = strings.TrimSpace(output)
+	}
+
+	// Prepare the response
+	response := map[string]interface{}{
+		"tracked":  tracked,
+		"deleted":  false,
+		"modified": false,
+	}
+
+	// If the file is tracked, check its status
+	if tracked {
+		// Check if the file is deleted
+		if strings.HasPrefix(string(output), "fatal:") {
+			response["tracked"] = false
+			response["deleted"] = true
+		} else {
+			// Check if the file is modified
+			statusOutput, _ := runGitCommandOutput("diff", "--shortstat", "HEAD", relPath)
+			if strings.TrimSpace(statusOutput) != "" {
+				response["modified"] = true
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleGitLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Format: Hash|||Author|||Date|||Message|||Parents
+	// Parents are space-separated
+	output, err := runGitCommandOutput("log", "--pretty=format:%H|||%an|||%ad|||%s|||%p", "--date=iso", "--all")
+
+	if err != nil {
+		http.Error(w, "Git log failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type LogEntry struct {
+		Hash    string   `json:"hash"`
+		Author  string   `json:"author"`
+		Date    string   `json:"date"`
+		Message string   `json:"message"`
+		Parents []string `json:"parents"`
+	}
+
+	var entries []LogEntry
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		parts := strings.Split(line, "|||")
+		if len(parts) >= 4 {
+			entry := LogEntry{
+				Hash:    parts[0],
+				Author:  parts[1],
+				Date:    parts[2],
+				Message: parts[3],
+			}
+			if len(parts) > 4 {
+				entry.Parents = strings.Fields(parts[4])
+			} else {
+				entry.Parents = []string{}
+			}
+			entries = append(entries, entry)
+		}
+	}
+
+	json.NewEncoder(w).Encode(entries)
+}
+
+func handleGitCommitDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	hash := strings.TrimPrefix(r.URL.Path, "/api/git/commit/")
+	if hash == "" {
+		http.Error(w, "Missing commit hash", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Get Metadata
+	// Format: Hash|||Author|||Date|||Message
+	metaOutput, err := runGitCommandOutput("show", "-s", "--format=%H|||%an|||%ad|||%s", "--date=iso", hash)
+	if err != nil {
+		http.Error(w, "Git show failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	parts := strings.Split(strings.TrimSpace(metaOutput), "|||")
+	if len(parts) < 4 {
+		http.Error(w, "Failed to parse commit metadata", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Get Changed Files
+	// Format: Status Path
+	filesOutput, err := runGitCommandOutput("show", "--name-status", "--format=", hash)
+	if err != nil {
+		// This might fail for root commit or empty commits, handle gracefully?
+		log.Println("Git show files warning:", err)
+	}
+
+	type FileChange struct {
+		Status string `json:"status"`
+		Path   string `json:"path"`
+	}
+
+	var files []FileChange
+	fileLines := strings.Split(filesOutput, "\n")
+	for _, line := range fileLines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Output looks like: "M\tfile.txt" or "A\tfile.txt"
+		// Sometimes "R100\told.txt\tnew.txt"
+		fParts := strings.Split(line, "\t")
+		if len(fParts) >= 2 {
+			status := fParts[0]
+			path := fParts[1]
+			// Handle rename if needed, for now just take the new path
+			if len(fParts) > 2 {
+				path = fParts[2] // New path
+			}
+			files = append(files, FileChange{Status: status, Path: path})
+		}
+	}
+
+	response := map[string]interface{}{
+		"hash":    parts[0],
+		"author":  parts[1],
+		"date":    parts[2],
+		"message": parts[3],
+		"files":   files,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleGitDiff(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain") // Return raw diff text
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	commit := r.URL.Query().Get("commit")
+	path := r.URL.Query().Get("path")
+
+	if commit == "" || path == "" {
+		http.Error(w, "Missing commit or path", http.StatusBadRequest)
+		return
+	}
+
+	// git show <commit> -- <path> gives the patch
+	output, err := runGitCommandOutput("show", commit, "--", path)
+	if err != nil {
+		http.Error(w, "Git diff failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte(output))
 }

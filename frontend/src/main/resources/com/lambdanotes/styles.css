@@ -44,7 +44,7 @@
 
 /* Toolbar Styling - Professional & Minimal */
 .tool-bar-container {
-    -fx-background-color: #21252b;
+    -fx-background-color: #1b1d23;
     -fx-padding: 8px 16px;
     -fx-spacing: 12px;
     -fx-alignment: CENTER_LEFT;
@@ -102,7 +102,7 @@
 
 /* Window Title Bar */
 .window-title-bar {
-    -fx-background-color: #21252b;
+    -fx-background-color: #1b1d23;
     -fx-border-color: #181a1f;
     -fx-border-width: 0 0 1px 0;
     -fx-padding: 0 10px;
@@ -162,9 +162,36 @@
 
 /* Sidebar */
 .sidebar {
-    -fx-background-color: #21252b;
+    -fx-background-color: #1b1d23;
     -fx-border-color: #181a1f;
     -fx-border-width: 0 1px 0 0; /* Right border for the whole sidebar */
+}
+
+/* Activity Bar */
+.activity-bar {
+    -fx-background-color: #1b1d23;
+    -fx-border-color: #181a1f;
+    -fx-border-width: 0 1px 0 0;
+}
+
+.activity-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #5c6370;
+    -fx-font-size: 24px;
+    -fx-cursor: hand;
+    -fx-padding: 5px;
+    -fx-background-radius: 0;
+    -fx-border-width: 0 0 0 2px;
+    -fx-border-color: transparent;
+}
+
+.activity-button:hover {
+    -fx-text-fill: #abb2bf;
+}
+
+.activity-button-active {
+    -fx-text-fill: #abb2bf;
+    -fx-border-color: #61afef;
 }
 
 /* Context Menu Styling */
@@ -282,7 +309,7 @@
     -fx-font-size: 13px;
     -fx-background-radius: 0; /* Square edges to match sidebar width look? Or keep it? User said "width same as sidebar" */
     -fx-border-radius: 0;
-    -fx-background-color: #21252b;
+    -fx-background-color: #1b1d23;
     -fx-text-fill: #abb2bf;
     -fx-border-color: transparent transparent #181a1f transparent;
     -fx-border-width: 1px;
@@ -455,7 +482,7 @@
 
 /* Status Bar */
 .status-bar {
-    -fx-background-color: #21252b;
+    -fx-background-color: #1b1d23;
     -fx-border-color: #181a1f;
     -fx-border-width: 1px 0 0 0;
     -fx-padding: 5px 10px;
@@ -559,6 +586,138 @@
 .line-numbers .content {
     -fx-background-color: transparent;
     -fx-alignment: TOP-RIGHT;
+}
+
+/* Git History View */
+.git-history-view {
+    -fx-background-color: #1b1d23;
+}
+
+.git-log-table {
+    -fx-background-color: transparent;
+    -fx-base: #1b1d23;
+    -fx-control-inner-background: #1b1d23;
+    -fx-table-cell-border-color: transparent;
+    -fx-table-header-border-color: transparent;
+    -fx-padding: 0;
+}
+
+.git-log-table .column-header-background {
+    -fx-background-color: #1b1d23;
+    -fx-border-width: 0 0 1px 0;
+    -fx-border-color: #282c34;
+}
+
+.git-log-table .column-header {
+    -fx-background-color: transparent;
+    -fx-size: 30px;
+    -fx-border-width: 0;
+}
+
+.git-log-table .column-header .label {
+    -fx-text-fill: #abb2bf;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.git-log-table .table-row-cell {
+    -fx-background-color: transparent;
+    -fx-border-width: 0 0 1px 0;
+    -fx-border-color: #21252b;
+}
+
+.git-log-table .table-row-cell:odd {
+    -fx-background-color: transparent;
+}
+
+.git-log-table .table-row-cell:selected {
+    -fx-background-color: #2c313a;
+}
+
+.git-log-table .table-cell {
+    -fx-text-fill: #abb2bf;
+    -fx-font-size: 12px;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 5px;
+}
+
+/* Commit Detail View */
+.commit-detail-view {
+    -fx-background-color: #1e1f22;
+}
+
+.commit-header {
+    -fx-background-color: #1b1d23;
+    -fx-border-color: #181a1f;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.commit-message-large {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #dfe1e5;
+}
+
+.commit-meta {
+    -fx-font-size: 13px;
+    -fx-text-fill: #abb2bf;
+}
+
+.commit-hash-badge {
+    -fx-background-color: #2c313a;
+    -fx-text-fill: #61afef;
+    -fx-font-family: "JetBrains Mono", monospace;
+    -fx-padding: 2px 6px;
+    -fx-background-radius: 4px;
+    -fx-font-size: 12px;
+}
+
+.section-title {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #5c6370;
+    -fx-padding: 5px 10px;
+    -fx-background-color: #21252b;
+}
+
+.file-list {
+    -fx-background-color: #1e1f22;
+    -fx-border-width: 0;
+}
+
+.file-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #abb2bf;
+    -fx-padding: 5px 10px;
+    -fx-font-size: 13px;
+}
+
+.file-list .list-cell:filled:selected, .file-list .list-cell:filled:hover {
+    -fx-background-color: #2c313a;
+}
+
+.status-badge {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 4px;
+    -fx-background-radius: 3px;
+    -fx-min-width: 15px;
+    -fx-alignment: CENTER;
+}
+
+.status-modified {
+    -fx-background-color: #e5c07b; /* Yellow */
+    -fx-text-fill: #3e4451;
+}
+
+.status-added {
+    -fx-background-color: #98c379; /* Green */
+    -fx-text-fill: #3e4451;
+}
+
+.status-deleted {
+    -fx-background-color: #e06c75; /* Red */
+    -fx-text-fill: white;
 }
 
 

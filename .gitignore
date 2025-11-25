@@ -35,3 +35,7 @@ backend/config.json
 # Note: backend/notes/ seems to contain sample data, so we keep it.
 # But we should ignore the .git folder if the app initializes one there during dev
 backend/notes/.git/
+
+# User Notes
+notes/
+notes.db
