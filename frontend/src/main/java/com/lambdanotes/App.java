@@ -69,6 +69,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.lambdanotes.GitHistoryView; // Import GitHistoryView
 import com.lambdanotes.GitCommitDetailView;
 import com.lambdanotes.utils.HtmlPasteUtils;
+import netscape.javascript.JSObject;
 
 public class App extends Application {
 
@@ -281,6 +282,12 @@ public class App extends Application {
         previewArea = new WebView();
         previewArea.setPageFill(Color.TRANSPARENT);
         previewArea.setContextMenuEnabled(false);
+        previewArea.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == javafx.concurrent.Worker.State.SUCCEEDED) {
+                JSObject window = (JSObject) previewArea.getEngine().executeScript("window");
+                window.setMember("javaApp", new JavaBridge());
+            }
+        });
 
         editorPanel = createEditorPanel();
         previewPanel = createPreviewPanel();
@@ -1249,6 +1256,18 @@ public class App extends Application {
                 "  button.innerText = '" + copiedText + "';" +
                 "  setTimeout(function() { button.innerText = originalText; }, 2000);" +
                 "}" +
+                "document.addEventListener('click', function(e) {" +
+                "  var target = e.target;" +
+                "  while (target && target.tagName !== 'A') {" +
+                "    target = target.parentNode;" +
+                "  }" +
+                "  if (target && target.href) {" +
+                "    e.preventDefault();" +
+                "    if (window.javaApp) {" +
+                "       window.javaApp.openLink(target.getAttribute('href'));" +
+                "    }" +
+                "  }" +
+                "});" +
                 "document.addEventListener('DOMContentLoaded', function() {" +
                 "  var blocks = document.querySelectorAll('pre');" +
                 "  blocks.forEach(function(block) {" +
@@ -2861,7 +2880,7 @@ public class App extends Application {
 
     private void setupDragAndDrop(TextArea area) {
         area.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles()) {
+            if (event.getDragboard().hasFiles() || event.getDragboard().hasString()) {
                 event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
             }
             event.consume();
@@ -2879,6 +2898,16 @@ public class App extends Application {
                         success = true;
                     }
                 }
+            } else if (db.hasString()) {
+                String path = db.getString();
+                String name = path;
+                if (name.contains("/")) {
+                    name = name.substring(name.lastIndexOf("/") + 1);
+                }
+                
+                String link = String.format("[%s](%s)", name, path);
+                area.insertText(area.getCaretPosition(), link);
+                success = true;
             }
             event.setDropCompleted(success);
             event.consume();
@@ -2906,5 +2935,69 @@ public class App extends Application {
                 rootSplitPane.getItems().add(detailView);
             }
         }
+    }
+
+    public class JavaBridge {
+        public void openLink(String href) {
+            Platform.runLater(() -> {
+                if (href.startsWith("http://") || href.startsWith("https://")) {
+                    getHostServices().showDocument(href);
+                } else {
+                    handleLocalLink(href);
+                }
+            });
+        }
+    }
+
+    private void handleLocalLink(String path) {
+        try {
+            path = java.net.URLDecoder.decode(path, "UTF-8");
+        } catch (Exception e) {
+            // ignore
+        }
+        if (path.startsWith("/")) path = path.substring(1);
+        
+        // Check if it is a folder or file
+        // We assume .md is a file, everything else is a folder or unknown
+        boolean isNote = path.toLowerCase().endsWith(".md");
+        
+        if (isNote) {
+            if (showTabs) {
+                if (openTabs.containsKey(path)) {
+                    editorTabPane.getSelectionModel().select(openTabs.get(path));
+                } else {
+                    loadNote(path);
+                }
+            } else {
+                loadNote(path);
+            }
+        } else {
+            // Assume folder, try to select in tree
+            selectInTree(path);
+        }
+    }
+
+    private void selectInTree(String path) {
+        if (noteTreeView.getRoot() == null) return;
+        TreeItem<String> found = findTreeItem(noteTreeView.getRoot(), path);
+        if (found != null) {
+            noteTreeView.getSelectionModel().select(found);
+            int row = noteTreeView.getRow(found);
+            noteTreeView.scrollTo(row);
+            found.setExpanded(true);
+        }
+    }
+    
+    private TreeItem<String> findTreeItem(TreeItem<String> root, String path) {
+        // Check current item
+        // Note: buildPath might return empty string for root or "root" depending on implementation
+        // My buildPath stops before root.
+        if (root.getParent() != null && buildPath(root).equals(path)) return root;
+        
+        for (TreeItem<String> child : root.getChildren()) {
+            TreeItem<String> result = findTreeItem(child, path);
+            if (result != null) return result;
+        }
+        return null;
     }
 }
