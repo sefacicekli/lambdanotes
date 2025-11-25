@@ -68,6 +68,7 @@ import javafx.scene.layout.Pane;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.lambdanotes.GitHistoryView; // Import GitHistoryView
 import com.lambdanotes.GitCommitDetailView;
+import com.lambdanotes.utils.HtmlPasteUtils;
 
 public class App extends Application {
 
@@ -702,6 +703,22 @@ public class App extends Application {
                         if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".gif")) {
                             event.consume();
                             handleImageUpload(file, textArea);
+                        }
+                    }
+                } else if (clipboard.hasHtml()) {
+                    // Handle HTML paste (code from IDEs like VS Code)
+                    String html = clipboard.getHtml();
+                    if (HtmlPasteUtils.isCodeHtml(html)) {
+                        event.consume();
+                        String markdownCode = HtmlPasteUtils.convertToMarkdownCodeBlock(html);
+                        if (!markdownCode.isEmpty()) {
+                            int caret = textArea.getCaretPosition();
+                            String selectedText = textArea.getSelectedText();
+                            if (selectedText != null && !selectedText.isEmpty()) {
+                                textArea.replaceSelection(markdownCode);
+                            } else {
+                                textArea.insertText(caret, markdownCode);
+                            }
                         }
                     }
                 }
