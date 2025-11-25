@@ -122,6 +122,9 @@ func main() {
 	http.HandleFunc("/api/git/info", loggingMiddleware(handleGitInfo))              // GET (git info)
 	http.HandleFunc("/api/git/file-status", loggingMiddleware(handleGitFileStatus)) // GET (check if file is tracked)
 	http.HandleFunc("/api/upload", loggingMiddleware(handleUpload))                 // POST (upload image)
+	http.HandleFunc("/api/git/log", loggingMiddleware(handleGitLog))                // GET (git log)
+	http.HandleFunc("/api/git/commit/", loggingMiddleware(handleGitCommitDetail))   // GET (commit details)
+	http.HandleFunc("/api/git/diff", loggingMiddleware(handleGitDiff))              // GET (file diff)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
@@ -940,4 +943,144 @@ func handleGitFileStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func handleGitLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Format: Hash|||Author|||Date|||Message|||Parents
+	// Parents are space-separated
+	output, err := runGitCommandOutput("log", "--pretty=format:%H|||%an|||%ad|||%s|||%p", "--date=iso", "--all")
+
+	if err != nil {
+		http.Error(w, "Git log failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type LogEntry struct {
+		Hash    string   `json:"hash"`
+		Author  string   `json:"author"`
+		Date    string   `json:"date"`
+		Message string   `json:"message"`
+		Parents []string `json:"parents"`
+	}
+
+	var entries []LogEntry
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		parts := strings.Split(line, "|||")
+		if len(parts) >= 4 {
+			entry := LogEntry{
+				Hash:    parts[0],
+				Author:  parts[1],
+				Date:    parts[2],
+				Message: parts[3],
+			}
+			if len(parts) > 4 {
+				entry.Parents = strings.Fields(parts[4])
+			} else {
+				entry.Parents = []string{}
+			}
+			entries = append(entries, entry)
+		}
+	}
+
+	json.NewEncoder(w).Encode(entries)
+}
+
+func handleGitCommitDetail(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	hash := strings.TrimPrefix(r.URL.Path, "/api/git/commit/")
+	if hash == "" {
+		http.Error(w, "Missing commit hash", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Get Metadata
+	// Format: Hash|||Author|||Date|||Message
+	metaOutput, err := runGitCommandOutput("show", "-s", "--format=%H|||%an|||%ad|||%s", "--date=iso", hash)
+	if err != nil {
+		http.Error(w, "Git show failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	parts := strings.Split(strings.TrimSpace(metaOutput), "|||")
+	if len(parts) < 4 {
+		http.Error(w, "Failed to parse commit metadata", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Get Changed Files
+	// Format: Status Path
+	filesOutput, err := runGitCommandOutput("show", "--name-status", "--format=", hash)
+	if err != nil {
+		// This might fail for root commit or empty commits, handle gracefully?
+		log.Println("Git show files warning:", err)
+	}
+
+	type FileChange struct {
+		Status string `json:"status"`
+		Path   string `json:"path"`
+	}
+
+	var files []FileChange
+	fileLines := strings.Split(filesOutput, "\n")
+	for _, line := range fileLines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Output looks like: "M\tfile.txt" or "A\tfile.txt"
+		// Sometimes "R100\told.txt\tnew.txt"
+		fParts := strings.Split(line, "\t")
+		if len(fParts) >= 2 {
+			status := fParts[0]
+			path := fParts[1]
+			// Handle rename if needed, for now just take the new path
+			if len(fParts) > 2 {
+				path = fParts[2] // New path
+			}
+			files = append(files, FileChange{Status: status, Path: path})
+		}
+	}
+
+	response := map[string]interface{}{
+		"hash":    parts[0],
+		"author":  parts[1],
+		"date":    parts[2],
+		"message": parts[3],
+		"files":   files,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleGitDiff(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain") // Return raw diff text
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	commit := r.URL.Query().Get("commit")
+	path := r.URL.Query().Get("path")
+
+	if commit == "" || path == "" {
+		http.Error(w, "Missing commit or path", http.StatusBadRequest)
+		return
+	}
+
+	// git show <commit> -- <path> gives the patch
+	output, err := runGitCommandOutput("show", commit, "--", path)
+	if err != nil {
+		http.Error(w, "Git diff failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte(output))
 }

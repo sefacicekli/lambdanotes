@@ -357,5 +357,78 @@ public class NoteService {
         byteArrays.add(("--" + boundary + "--").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return HttpRequest.BodyPublishers.ofByteArrays(byteArrays);
     }
+
+    public static class GitLogEntry {
+        public String hash;
+        public String author;
+        public String date;
+        public String message;
+        public List<String> parents;
+    }
+
+    public CompletableFuture<List<GitLogEntry>> getGitLog() {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/log"))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get git log: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), new TypeToken<List<GitLogEntry>>(){}.getType());
+                });
+    }
+
+    public static class GitCommitDetail {
+        public String hash;
+        public String author;
+        public String date;
+        public String message;
+        public List<GitFileChange> files;
+    }
+
+    public static class GitFileChange {
+        public String status;
+        public String path;
+    }
+
+    public CompletableFuture<GitCommitDetail> getCommitDetail(String hash) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/commit/" + hash))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get commit detail: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), GitCommitDetail.class);
+                });
+    }
+
+    public CompletableFuture<String> getDiff(String hash, String path) {
+        String encodedPath;
+        try {
+            encodedPath = java.net.URLEncoder.encode(path, java.nio.charset.StandardCharsets.UTF_8.toString());
+        } catch (Exception e) {
+            encodedPath = path;
+        }
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/git/diff?commit=" + hash + "&path=" + encodedPath))
+                .GET()
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Failed to get diff: " + response.body());
+                    }
+                    return response.body();
+                });
+    }
 }
 
