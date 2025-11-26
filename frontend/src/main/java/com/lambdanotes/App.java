@@ -155,6 +155,27 @@ public class App extends Application {
     private Stage primaryStage;
     private AppConfig currentConfig;
 
+    // Notification fields
+    private Button notificationBtn;
+    private Button updateBtn;
+    private final List<NotificationRecord> notificationHistory = new ArrayList<>();
+
+    private static class NotificationRecord {
+        String title;
+        String message;
+        NotificationType type;
+        String time;
+
+        public NotificationRecord(String title, String message, NotificationType type) {
+            this.title = title;
+            this.message = message;
+            this.type = type;
+            this.time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+    }
+
+    private UpdateChecker.UpdateInfo pendingUpdateInfo; // Field to store pending update information
+
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
@@ -442,15 +463,118 @@ public class App extends Application {
         UpdateChecker checker = new UpdateChecker();
         checker.checkForUpdates(APP_VERSION).thenAccept(updateInfo -> {
             if (updateInfo != null) {
-                Platform.runLater(() -> showNotification(
-                    LanguageManager.get("dialog.update_available"), 
-                    java.text.MessageFormat.format(LanguageManager.get("dialog.update_desc"), updateInfo.version), 
-                    NotificationType.INFO, 
-                    LanguageManager.get("dialog.download"), 
-                    () -> getHostServices().showDocument(updateInfo.url)
-                ));
+                Platform.runLater(() -> {
+                    this.pendingUpdateInfo = updateInfo; // Store for later use (e.g. theme switch)
+                    updateBtn.setVisible(true);
+                    updateBtn.setManaged(true);
+                    updateBtn.setUserData(updateInfo); // Store update info
+                    showNotification(
+                        LanguageManager.get("dialog.update_available"), 
+                        java.text.MessageFormat.format(LanguageManager.get("dialog.update_desc"), updateInfo.version), 
+                        NotificationType.INFO, 
+                        LanguageManager.get("dialog.download"), 
+                        () -> getHostServices().showDocument(updateInfo.url)
+                    );
+                });
             }
         });
+    }
+
+    private void showUpdateDialog() {
+        UpdateChecker.UpdateInfo updateInfo = (UpdateChecker.UpdateInfo) updateBtn.getUserData();
+        if (updateInfo != null) {
+             getHostServices().showDocument(updateInfo.url);
+        }
+    }
+
+    private void toggleNotificationHistory() {
+        // Check if already open
+        if (rootStack.getChildren().stream().anyMatch(n -> n.getId() != null && n.getId().equals("notification-history"))) {
+            rootStack.getChildren().removeIf(n -> n.getId() != null && n.getId().equals("notification-history"));
+            return;
+        }
+
+        VBox historyPanel = new VBox(10);
+        historyPanel.setId("notification-history");
+        historyPanel.getStyleClass().add("notification-history-panel");
+        historyPanel.setMaxHeight(400);
+        historyPanel.setMaxWidth(350);
+        historyPanel.setPadding(new Insets(15));
+        
+        // Header
+        HBox header = new HBox(10);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label(LanguageManager.get("notification.title"));
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #abb2bf;");
+        
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        
+        Button clearBtn = new Button(LanguageManager.get("notification.clear"));
+        clearBtn.getStyleClass().add("small-button");
+        clearBtn.setOnAction(e -> {
+            notificationHistory.clear();
+            rootStack.getChildren().remove(historyPanel);
+        });
+        
+        header.getChildren().addAll(title, spacer, clearBtn);
+        
+        // List
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        
+        VBox list = new VBox(10);
+        if (notificationHistory.isEmpty()) {
+            Label empty = new Label(LanguageManager.get("notification.empty"));
+            empty.setStyle("-fx-text-fill: #5c6370; -fx-padding: 20px;");
+            list.getChildren().add(empty);
+        } else {
+            for (NotificationRecord record : notificationHistory) {
+                VBox item = new VBox(5);
+                item.getStyleClass().add("notification-history-item");
+                item.setPadding(new Insets(10));
+                item.setStyle("-fx-background-color: #2c313a; -fx-background-radius: 5px;");
+                
+                HBox itemHeader = new HBox(10);
+                Label itemTitle = new Label(record.title);
+                itemTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #e5c07b;");
+                
+                Region itemSpacer = new Region();
+                HBox.setHgrow(itemSpacer, Priority.ALWAYS);
+                
+                Label timeLabel = new Label(record.time);
+                timeLabel.setStyle("-fx-text-fill: #5c6370; -fx-font-size: 10px;");
+                
+                itemHeader.getChildren().addAll(itemTitle, itemSpacer, timeLabel);
+                
+                Label message = new Label(record.message);
+                message.setWrapText(true);
+                message.setStyle("-fx-text-fill: #abb2bf;");
+                
+                item.getChildren().addAll(itemHeader, message);
+                list.getChildren().add(item);
+            }
+        }
+        
+        scrollPane.setContent(list);
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+        
+        historyPanel.getChildren().addAll(header, scrollPane);
+        
+        // Position bottom-right above status bar
+        StackPane.setAlignment(historyPanel, Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(historyPanel, new Insets(0, 10, 40, 0));
+        
+        // Close on click outside
+        rootStack.setOnMouseClicked(e -> {
+            if (!historyPanel.contains(historyPanel.sceneToLocal(e.getSceneX(), e.getSceneY())) && 
+                !notificationBtn.contains(notificationBtn.sceneToLocal(e.getSceneX(), e.getSceneY()))) {
+                rootStack.getChildren().remove(historyPanel);
+            }
+        });
+        
+        rootStack.getChildren().add(historyPanel);
     }
 
     private void toggleMaximize(Stage stage) {
@@ -1482,7 +1606,7 @@ public class App extends Application {
         VBox.setVgrow(editorBody, Priority.ALWAYS);
         
         TextField tabTitleField = new TextField(filename);
-        tabTitleField.setPromptText("Not Başlığı");
+        tabTitleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
         tabTitleField.setPrefWidth(Double.MAX_VALUE);
         tabTitleField.setMaxWidth(Double.MAX_VALUE);
         tabTitleField.setAlignment(Pos.CENTER_LEFT);
@@ -1748,7 +1872,27 @@ public class App extends Application {
         branchLabel.getStyleClass().add("status-branch");
         branchLabel.setCursor(Cursor.HAND);
 
-        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
+        notificationBtn = new Button("🔔");
+        notificationBtn.getStyleClass().add("status-button");
+        notificationBtn.setTooltip(new Tooltip(LanguageManager.get("notification.tooltip")));
+        notificationBtn.setOnAction(e -> toggleNotificationHistory());
+
+        updateBtn = new Button(LanguageManager.get("status.update_available"));
+        updateBtn.getStyleClass().add("status-button-update");
+        
+        // Restore update button state if pending update exists
+        if (pendingUpdateInfo != null) {
+            updateBtn.setVisible(true);
+            updateBtn.setManaged(true);
+            updateBtn.setUserData(pendingUpdateInfo);
+        } else {
+            updateBtn.setVisible(false);
+            updateBtn.setManaged(false);
+        }
+        
+        updateBtn.setOnAction(e -> showUpdateDialog());
+
+        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel, new Label(" "), notificationBtn, updateBtn);
         return statusBar;
     }
 
@@ -1757,6 +1901,9 @@ public class App extends Application {
     }
 
     private void showNotification(String title, String message, NotificationType type, String actionText, Runnable action) {
+        // Add to history
+        notificationHistory.add(0, new NotificationRecord(title, message, type));
+        
         HBox notification = new HBox(0);
         notification.getStyleClass().add("notification-popup");
         notification.setMaxHeight(Region.USE_PREF_SIZE); // Prevent vertical stretching
@@ -1827,7 +1974,7 @@ public class App extends Application {
         FadeTransition fadeOut = new FadeTransition(Duration.millis(500), notification);
         fadeOut.setFromValue(1);
         fadeOut.setToValue(0);
-        fadeOut.setDelay(Duration.seconds(3));
+        fadeOut.setDelay(Duration.seconds(5)); // 5 seconds delay
         fadeOut.setOnFinished(e -> rootStack.getChildren().remove(notification));
 
         fadeIn.play();
@@ -2643,7 +2790,7 @@ public class App extends Application {
         Button btnNewFile = new Button("📄");
         btnNewFile.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_note")));
         btnNewFile.getStyleClass().add("sidebar-action-button");
-        btnNewFile.setOnAction(e -> clearEditor());
+        btnNewFile.setOnAction(e -> createNewNote());
 
         Button btnNewFolder = new Button("📁");
         btnNewFolder.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_folder")));
@@ -3038,5 +3185,28 @@ public class App extends Application {
             if (result != null) return result;
         }
         return null;
+    }
+
+    private void createNewNote() {
+        TreeItem<String> selectedItem = noteTreeView.getSelectionModel().getSelectedItem();
+        String initialPath = "";
+        if (selectedItem != null) {
+            String path = buildPath(selectedItem);
+            if (path.endsWith(".md")) {
+                int lastSlash = path.lastIndexOf("/");
+                if (lastSlash > 0) {
+                    initialPath = path.substring(0, lastSlash + 1);
+                }
+            } else {
+                initialPath = path + "/";
+            }
+        }
+        
+        clearEditor();
+        
+        if (!initialPath.isEmpty()) {
+            titleField.setText(initialPath);
+            titleField.positionCaret(initialPath.length());
+        }
     }
 }

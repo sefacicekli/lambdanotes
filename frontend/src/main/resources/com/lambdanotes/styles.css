@@ -500,15 +500,81 @@
     -fx-font-weight: bold;
 }
 
-/* IntelliJ-like Notifications */
+/* Status Bar Buttons */
+.status-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #9da5b4;
+    -fx-font-size: 14px; /* Slightly larger icon */
+    -fx-padding: 0 5px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 3px;
+}
+
+.status-button:hover {
+    -fx-text-fill: #abb2bf;
+    -fx-background-color: rgba(255,255,255,0.1);
+}
+
+.status-button-update {
+    -fx-background-color: #e06c75;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 6px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 10px; /* Pill shape */
+}
+
+.status-button-update:hover {
+    -fx-background-color: #e45649;
+}
+
+/* Notification History Panel */
+.notification-history-panel {
+    -fx-background-color: #21252b; /* Darker background */
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 15, 0, 0, 5);
+    -fx-background-radius: 6px;
+    -fx-border-color: #181a1f;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+}
+
+.notification-history-item {
+    -fx-background-color: #282c34;
+    -fx-background-radius: 4px;
+    -fx-border-color: #3e4451;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+}
+
+.small-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #abb2bf;
+    -fx-font-size: 10px;
+    -fx-padding: 2px 5px;
+    -fx-border-color: #3e4451;
+    -fx-border-radius: 3px;
+    -fx-cursor: hand;
+}
+
+.small-button:hover {
+    -fx-background-color: #3e4451;
+    -fx-text-fill: white;
+}
+
+/* Notifications */
 .notification-popup {
-    -fx-background-color: #2b2d30;
+    -fx-background-color: #282c34;
     -fx-background-radius: 5px;
     -fx-border-radius: 5px;
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 15, 0, 0, 5);
     -fx-padding: 0;
     -fx-min-width: 250px;
     -fx-max-width: 300px;
+    -fx-border-color: #181a1f;
+    -fx-border-width: 1px;
 }
 
 .notification-accent {
@@ -518,10 +584,10 @@
     -fx-background-radius: 5px 0 0 5px;
 }
 
-.notification-accent-info { -fx-background-color: #3574f0; }
-.notification-accent-success { -fx-background-color: #57965c; }
-.notification-accent-warning { -fx-background-color: #c19600; }
-.notification-accent-error { -fx-background-color: #e05555; }
+.notification-accent-info { -fx-background-color: #61afef; }
+.notification-accent-success { -fx-background-color: #98c379; }
+.notification-accent-warning { -fx-background-color: #e5c07b; }
+.notification-accent-error { -fx-background-color: #e06c75; }
 
 .notification-content {
     -fx-padding: 8px 12px;
@@ -534,33 +600,33 @@
 }
 
 .notification-title {
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #abb2bf;
     -fx-font-weight: bold;
     -fx-font-size: 12px;
 }
 
 .notification-message {
-    -fx-text-fill: #bbbbbb;
+    -fx-text-fill: #9da5b4;
     -fx-font-size: 12px;
     -fx-wrap-text: true;
 }
 
 .notification-close-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #7c7f88;
+    -fx-text-fill: #5c6370;
     -fx-font-size: 10px;
     -fx-padding: 2px 5px;
     -fx-cursor: hand;
 }
 
 .notification-close-button:hover {
-    -fx-text-fill: #dfe1e5;
+    -fx-text-fill: #abb2bf;
     -fx-background-color: rgba(255,255,255,0.1);
     -fx-background-radius: 3px;
 }
 
 .notification-action-link {
-    -fx-text-fill: #3574f0;
+    -fx-text-fill: #61afef;
     -fx-font-size: 13px;
     -fx-padding: 0;
     -fx-border-width: 0;
@@ -569,217 +635,6 @@
 
 .notification-action-link:hover {
     -fx-underline: true;
-}
-
-.line-numbers {
-    -fx-background-color: transparent;
-    -fx-text-fill: #5c6370;
-    -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
-    -fx-font-size: 16px;
-    -fx-padding: 20 5 20 0;
-    -fx-alignment: TOP-RIGHT;
-    -fx-border-color: #181a1f;
-    -fx-border-width: 0 1px 0 0;
-    -fx-control-inner-background: transparent;
-}
-
-.line-numbers .content {
-    -fx-background-color: transparent;
-    -fx-alignment: TOP-RIGHT;
-}
-
-/* Git History View */
-.git-history-view {
-    -fx-background-color: #1b1d23;
-}
-
-.git-log-table {
-    -fx-background-color: transparent;
-    -fx-base: #1b1d23;
-    -fx-control-inner-background: #1b1d23;
-    -fx-table-cell-border-color: transparent;
-    -fx-table-header-border-color: transparent;
-    -fx-padding: 0;
-}
-
-.git-log-table .column-header-background {
-    -fx-background-color: #1b1d23;
-    -fx-border-width: 0 0 1px 0;
-    -fx-border-color: #282c34;
-}
-
-.git-log-table .column-header {
-    -fx-background-color: transparent;
-    -fx-size: 30px;
-    -fx-border-width: 0;
-}
-
-.git-log-table .column-header .label {
-    -fx-text-fill: #abb2bf;
-    -fx-font-weight: bold;
-    -fx-font-size: 12px;
-}
-
-.git-log-table .table-row-cell {
-    -fx-background-color: transparent;
-    -fx-border-width: 0 0 1px 0;
-    -fx-border-color: #21252b;
-}
-
-.git-log-table .table-row-cell:odd {
-    -fx-background-color: transparent;
-}
-
-.git-log-table .table-row-cell:selected {
-    -fx-background-color: #2c313a;
-}
-
-.git-log-table .table-cell {
-    -fx-text-fill: #abb2bf;
-    -fx-font-size: 12px;
-    -fx-alignment: CENTER_LEFT;
-    -fx-padding: 5px;
-}
-
-/* Commit Detail View */
-.commit-detail-view {
-    -fx-background-color: #1e1f22;
-}
-
-.commit-header {
-    -fx-background-color: #1b1d23;
-    -fx-border-color: #181a1f;
-    -fx-border-width: 0 0 1px 0;
-}
-
-.commit-message-large {
-    -fx-font-size: 18px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #dfe1e5;
-}
-
-.commit-meta {
-    -fx-font-size: 13px;
-    -fx-text-fill: #abb2bf;
-}
-
-.commit-hash-badge {
-    -fx-background-color: #2c313a;
-    -fx-text-fill: #61afef;
-    -fx-font-family: "JetBrains Mono", monospace;
-    -fx-padding: 2px 6px;
-    -fx-background-radius: 4px;
-    -fx-font-size: 12px;
-}
-
-.section-title {
-    -fx-font-size: 11px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #5c6370;
-    -fx-padding: 5px 10px;
-    -fx-background-color: #21252b;
-}
-
-.file-list {
-    -fx-background-color: #1e1f22;
-    -fx-border-width: 0;
-}
-
-.file-list .list-cell {
-    -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
-    -fx-padding: 5px 10px;
-    -fx-font-size: 13px;
-}
-
-.file-list .list-cell:filled:selected, .file-list .list-cell:filled:hover {
-    -fx-background-color: #2c313a;
-}
-
-.status-badge {
-    -fx-font-size: 10px;
-    -fx-font-weight: bold;
-    -fx-padding: 1px 4px;
-    -fx-background-radius: 3px;
-    -fx-min-width: 15px;
-    -fx-alignment: CENTER;
-}
-
-.status-modified {
-    -fx-background-color: #e5c07b; /* Yellow */
-    -fx-text-fill: #3e4451;
-}
-
-.status-added {
-    -fx-background-color: #98c379; /* Green */
-    -fx-text-fill: #3e4451;
-}
-
-.status-deleted {
-    -fx-background-color: #e06c75; /* Red */
-    -fx-text-fill: white;
-}
-
-/* Projects View */
-.projects-view {
-    -fx-background-color: #1e1f22;
-}
-
-.projects-view .list-view {
-    -fx-background-color: transparent;
-    -fx-border-width: 0;
-}
-
-.projects-view .list-cell {
-    -fx-background-color: transparent;
-    -fx-text-fill: #abb2bf;
-    -fx-padding: 8px 12px;
-    -fx-font-size: 14px;
-    -fx-border-color: #2c313a;
-    -fx-border-width: 0 0 1px 0;
-}
-
-.projects-view .list-cell:filled:selected, .projects-view .list-cell:filled:hover {
-    -fx-background-color: #2c313a;
-    -fx-text-fill: white;
-}
-
-/* Task Detail View */
-.task-detail-view {
-    -fx-background-color: #1e1f22;
-}
-
-/* Kanban Board */
-.kanban-column {
-    -fx-background-color: #21252b;
-    -fx-background-radius: 6px;
-    -fx-border-color: #181a1f;
-    -fx-border-radius: 6px;
-    -fx-border-width: 1px;
-}
-
-.kanban-header {
-    -fx-text-fill: #abb2bf;
-    -fx-font-weight: bold;
-    -fx-font-size: 14px;
-    -fx-padding: 0 0 10px 0;
-    -fx-border-color: #282c34;
-    -fx-border-width: 0 0 1px 0;
-}
-
-.kanban-card {
-    -fx-background-color: #282c34;
-    -fx-background-radius: 4px;
-    -fx-border-color: #3e4451;
-    -fx-border-radius: 4px;
-    -fx-border-width: 1px;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 4, 0, 1, 1);
-    -fx-cursor: hand;
-}
-
-.kanban-card:hover {
-    -fx-border-color: #61afef;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 6, 0, 2, 2);
 }
 
 
