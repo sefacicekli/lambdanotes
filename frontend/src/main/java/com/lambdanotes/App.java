@@ -879,10 +879,27 @@ public class App extends Application {
     private void setupEditorBehavior(TextArea textArea) {
         // Shift+Enter to insert new line
         textArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            if (event.getCode() == KeyCode.ENTER && event.isShiftDown()) {
-                int caret = textArea.getCaretPosition();
-                textArea.insertText(caret, "\n");
-                event.consume();
+            if (event.getCode() == KeyCode.ENTER) {
+                if (event.isShiftDown()) {
+                    int caret = textArea.getCaretPosition();
+                    textArea.insertText(caret, "\n");
+                    event.consume();
+                } else {
+                    handleEnterKey(textArea, event);
+                }
+            } else if (event.getCode() == KeyCode.TAB) {
+                if (event.isShiftDown()) {
+                    unindentSelectionOrLine(textArea);
+                    event.consume();
+                } else {
+                    if (textArea.getSelectedText().isEmpty()) {
+                        textArea.insertText(textArea.getCaretPosition(), "  ");
+                        event.consume();
+                    } else {
+                        indentSelection(textArea);
+                        event.consume();
+                    }
+                }
             } else if (event.getCode() == KeyCode.V && event.isShortcutDown()) {
                 // Handle Paste
                 Clipboard clipboard = Clipboard.getSystemClipboard();
@@ -936,6 +953,162 @@ public class App extends Application {
         
         setupEditorContextMenu(textArea);
         setupDragAndDrop(textArea);
+    }
+
+    private void handleEnterKey(TextArea textArea, KeyEvent event) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        
+        // Find start of current line
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; // skip \n
+        
+        // Get current line content up to caret
+        String currentLine = text.substring(lineStart, caret);
+        
+        // Check indentation
+        StringBuilder indent = new StringBuilder();
+        for (char c : currentLine.toCharArray()) {
+            if (c == ' ' || c == '\t') {
+                indent.append(c);
+            } else {
+                break;
+            }
+        }
+        
+        String trimmedLine = currentLine.trim();
+        
+        // Check for list markers
+        // - item
+        // * item
+        // + item
+        // 1. item
+        
+        String listMarker = "";
+        if (trimmedLine.startsWith("- ") || trimmedLine.equals("-")) {
+            listMarker = "- ";
+        } else if (trimmedLine.startsWith("* ") || trimmedLine.equals("*")) {
+            listMarker = "* ";
+        } else if (trimmedLine.startsWith("+ ") || trimmedLine.equals("+")) {
+            listMarker = "+ ";
+        } else {
+            // Check for ordered list
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("^(\\d+)\\. ?.*");
+            java.util.regex.Matcher m = p.matcher(trimmedLine);
+            if (m.matches()) {
+                try {
+                    int num = Integer.parseInt(m.group(1));
+                    listMarker = (num + 1) + ". ";
+                } catch (NumberFormatException e) {
+                    // ignore
+                }
+            }
+        }
+        
+        // If current line is JUST the list marker (empty item), break the list
+        if (!listMarker.isEmpty() && (trimmedLine.equals(listMarker.trim()) || trimmedLine.equals(listMarker.trim().substring(0, listMarker.trim().length()-1)))) {
+            // Remove the current line's indentation and marker
+            // Actually, user wants "normal" behavior if pressed twice.
+            // If we are here, it means the user pressed Enter on a line that has a marker but no text.
+            // We should clear this line.
+            
+            // Calculate range to delete
+            int lineEnd = text.indexOf('\n', caret);
+            if (lineEnd == -1) lineEnd = text.length();
+            
+            textArea.deleteText(lineStart, lineEnd);
+            // Don't consume event? No, we handled it by clearing. 
+            // But we probably want to insert a newline if it wasn't the last line?
+            // Usually editors just clear the line and keep the cursor there (effectively moving to a new empty line state)
+            // Or they clear and move to next line.
+            
+            // Let's just clear the text on this line, so it becomes an empty line.
+            event.consume();
+            return;
+        }
+        
+        if (!listMarker.isEmpty()) {
+            textArea.insertText(caret, "\n" + indent + listMarker);
+            event.consume();
+        } else if (indent.length() > 0) {
+            // Maintain indentation for non-list items too
+            textArea.insertText(caret, "\n" + indent);
+            event.consume();
+        }
+        // If no indent and no list, let default behavior happen (insert \n)
+    }
+
+    private void indentSelection(TextArea textArea) {
+        String selection = textArea.getSelectedText();
+        if (selection == null || selection.isEmpty()) return;
+
+        String[] lines = selection.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i == lines.length - 1 && lines[i].isEmpty()) {
+                // Do nothing
+            } else {
+                sb.append("  ").append(lines[i]);
+            }
+            if (i < lines.length - 1) {
+                sb.append("\n");
+            }
+        }
+        textArea.replaceSelection(sb.toString());
+    }
+
+    private void unindentSelectionOrLine(TextArea textArea) {
+        String selection = textArea.getSelectedText();
+        if (selection == null || selection.isEmpty()) {
+            int caret = textArea.getCaretPosition();
+            String text = textArea.getText();
+            int lineStart = text.lastIndexOf('\n', caret - 1);
+            if (lineStart == -1) lineStart = 0;
+            else lineStart++; 
+            
+            int lineEnd = text.indexOf('\n', caret);
+            if (lineEnd == -1) lineEnd = text.length();
+            
+            String lineText = text.substring(lineStart, lineEnd);
+            String newLineText = lineText;
+            
+            if (newLineText.startsWith("  ")) {
+                newLineText = newLineText.substring(2);
+            } else if (newLineText.startsWith("\t")) {
+                newLineText = newLineText.substring(1);
+            } else if (newLineText.startsWith(" ")) {
+                newLineText = newLineText.substring(1);
+            }
+            
+            if (!newLineText.equals(lineText)) {
+                textArea.replaceText(lineStart, lineEnd, newLineText);
+            }
+        } else {
+            String[] lines = selection.split("\n", -1);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < lines.length; i++) {
+                if (i == lines.length - 1 && lines[i].isEmpty()) {
+                    // Do nothing
+                } else {
+                    String line = lines[i];
+                    if (line.startsWith("  ")) {
+                        sb.append(line.substring(2));
+                    } else if (line.startsWith("\t")) {
+                        sb.append(line.substring(1));
+                    } else if (line.startsWith(" ")) {
+                        sb.append(line.substring(1));
+                    } else {
+                        sb.append(line);
+                    }
+                }
+                
+                if (i < lines.length - 1) {
+                    sb.append("\n");
+                }
+            }
+            textArea.replaceSelection(sb.toString());
+        }
     }
 
     private void cutCurrentLine(TextArea textArea) {
@@ -1608,7 +1781,11 @@ public class App extends Application {
                 "th, td { border: 1px solid " + borderColor + "; padding: 8px; text-align: left; }" +
                 "th { background-color: " + codeBg + "; color: " + textColor + "; }" +
                 "img { max-width: 100%; border-radius: 5px; }" +
-                "ul, ol { padding-left: 20px; }" +
+                "ul, ol { padding-left: 30px; }" +
+                "ul ul, ul ol, ol ul, ol ol { margin-top: 0; margin-bottom: 0; }" +
+                "ul { list-style-type: disc; }" +
+                "ul ul { list-style-type: circle; }" +
+                "ul ul ul { list-style-type: square; }" +
                 "li { margin-bottom: 5px; }" +
                 "li.task-list-item { list-style-type: none; }" +
                 "input[type='checkbox'] { margin-right: 5px; }" +
