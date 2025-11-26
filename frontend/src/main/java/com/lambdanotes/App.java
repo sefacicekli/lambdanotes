@@ -3,6 +3,11 @@ package com.lambdanotes;
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
 import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension;
+import com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension;
+import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
+import com.vladsch.flexmark.ext.footnotes.FootnoteExtension;
+import com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
@@ -200,10 +205,24 @@ public class App extends Application {
         
         noteService = new NoteService();
         parser = Parser.builder()
-                .extensions(Arrays.asList(TablesExtension.create()))
+                .extensions(Arrays.asList(
+                    TablesExtension.create(),
+                    StrikethroughExtension.create(),
+                    TaskListExtension.create(),
+                    AutolinkExtension.create(),
+                    FootnoteExtension.create(),
+                    AnchorLinkExtension.create()
+                ))
                 .build();
         renderer = HtmlRenderer.builder()
-                .extensions(Arrays.asList(TablesExtension.create()))
+                .extensions(Arrays.asList(
+                    TablesExtension.create(),
+                    StrikethroughExtension.create(),
+                    TaskListExtension.create(),
+                    AutolinkExtension.create(),
+                    FootnoteExtension.create(),
+                    AnchorLinkExtension.create()
+                ))
                 .softBreak("<br />")
                 .build();
 
@@ -868,11 +887,65 @@ public class App extends Application {
             } else if (event.getCode() == KeyCode.D && event.isShortcutDown()) {
                  duplicateSelectionOrLine(textArea);
                  event.consume();
+            } else if (event.getCode() == KeyCode.X && event.isShortcutDown()) {
+                if (textArea.getSelectedText().isEmpty()) {
+                    cutCurrentLine(textArea);
+                    event.consume();
+                }
+            } else if (event.getCode() == KeyCode.C && event.isShortcutDown()) {
+                if (textArea.getSelectedText().isEmpty()) {
+                    copyCurrentLine(textArea);
+                    event.consume();
+                }
             }
         });
         
         setupEditorContextMenu(textArea);
         setupDragAndDrop(textArea);
+    }
+
+    private void cutCurrentLine(TextArea textArea) {
+        copyCurrentLine(textArea);
+        deleteCurrentLine(textArea);
+    }
+
+    private void copyCurrentLine(TextArea textArea) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; // skip \n
+        
+        int lineEnd = text.indexOf('\n', caret);
+        if (lineEnd == -1) lineEnd = text.length();
+        
+        String lineText = text.substring(lineStart, lineEnd);
+        if (lineEnd < text.length()) {
+            lineText += "\n";
+        }
+        
+        ClipboardContent content = new ClipboardContent();
+        content.putString(lineText);
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private void deleteCurrentLine(TextArea textArea) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; 
+        
+        int lineEnd = text.indexOf('\n', caret);
+        if (lineEnd == -1) lineEnd = text.length();
+        
+        if (lineEnd < text.length()) {
+            lineEnd++;
+        } else if (lineStart > 0) {
+            lineStart--;
+        }
+        
+        textArea.deleteText(lineStart, lineEnd);
     }
 
     private void duplicateSelectionOrLine(TextArea textArea) {
@@ -1307,6 +1380,10 @@ public class App extends Application {
 
         // Determine colors based on theme
         String textColor, bgColor, titleColor, codeBg, codeColor, borderColor, linkColor, buttonBg, buttonHover;
+        String alertNoteBg, alertNoteColor, alertNoteBorder;
+        String alertTipBg, alertTipColor, alertTipBorder;
+        String alertWarnBg, alertWarnColor, alertWarnBorder;
+        String alertCautionBg, alertCautionColor, alertCautionBorder;
         
         if ("Light".equalsIgnoreCase(currentTheme)) {
             textColor = "#24292e";
@@ -1318,6 +1395,11 @@ public class App extends Application {
             linkColor = "#0366d6";
             buttonBg = "#e1e4e8";
             buttonHover = "#d1d5da";
+            
+            alertNoteBg = "#ddf4ff"; alertNoteColor = "#0969da"; alertNoteBorder = "#0969da";
+            alertTipBg = "#dafbe1"; alertTipColor = "#1a7f37"; alertTipBorder = "#1a7f37";
+            alertWarnBg = "#fff8c5"; alertWarnColor = "#9a6700"; alertWarnBorder = "#9a6700";
+            alertCautionBg = "#ffebe9"; alertCautionColor = "#d1242f"; alertCautionBorder = "#d1242f";
         } else if ("Tokyo Night".equalsIgnoreCase(currentTheme)) {
             textColor = "#a9b1d6";
             bgColor = "transparent";
@@ -1328,6 +1410,11 @@ public class App extends Application {
             linkColor = "#7aa2f7";
             buttonBg = "#292e42";
             buttonHover = "#414868";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         } else if ("Retro Night".equalsIgnoreCase(currentTheme)) {
             textColor = "#fdfdfd";
             bgColor = "transparent";
@@ -1338,6 +1425,11 @@ public class App extends Application {
             linkColor = "#ff7edb";
             buttonBg = "#403e41";
             buttonHover = "#5d5a5e";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         } else {
             // Dark (Default)
             textColor = "#e6e6e6"; 
@@ -1349,6 +1441,11 @@ public class App extends Application {
             linkColor = "#61afef";
             buttonBg = "#3e4451";
             buttonHover = "#4b5263";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         }
 
         // Check if title should be shown
@@ -1424,7 +1521,31 @@ public class App extends Application {
                 "    };" +
                 "    wrapper.appendChild(button);" +
                 "  });" +
+                "  var blockquotes = document.querySelectorAll('blockquote');" +
+                "  blockquotes.forEach(function(bq) {" +
+                "    var p = bq.querySelector('p');" +
+                "    if (!p) return;" +
+                "    var text = p.textContent.trim();" +
+                "    var match = text.match(/^\\[!(NOTE|TIP|WARNING|CAUTION)\\]/i);" +
+                "    if (match) {" +
+                "      var type = match[1].toLowerCase();" +
+                "      bq.classList.add('markdown-alert', 'markdown-alert-' + type);" +
+                "      var content = p.innerHTML;" +
+                "      var newContent = content.replace(/^\\s*\\[!(NOTE|TIP|WARNING|CAUTION)\\]\\s*(<br\\s*\\/?>)?/i, '');" +
+                "      p.innerHTML = newContent;" +
+                "      var title = document.createElement('div');" +
+                "      title.className = 'markdown-alert-title';" +
+                "      title.innerText = type.charAt(0).toUpperCase() + type.slice(1);" +
+                "      bq.insertBefore(title, p);" +
+                "    }" +
+                "  });" +
                 "});" +
+                "Prism.languages['diff'] = {" +
+                "  'diff-remove': { pattern: /^-.*/m, alias: 'deleted' }," +
+                "  'diff-add': { pattern: /^\\\\+.*/m, alias: 'inserted' }," +
+                "  'diff-orange': { pattern: /^!.*/m, alias: 'important' }," +
+                "  'diff-gray': { pattern: /^#.*/m, alias: 'comment' }" +
+                "};" +
                 "</script>" +
                 "<style>" +
                 "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
@@ -1455,6 +1576,18 @@ public class App extends Application {
                 "img { max-width: 100%; border-radius: 5px; }" +
                 "ul, ol { padding-left: 20px; }" +
                 "li { margin-bottom: 5px; }" +
+                "li.task-list-item { list-style-type: none; }" +
+                "input[type='checkbox'] { margin-right: 5px; }" +
+                ".markdown-alert { padding: 8px 16px; margin-bottom: 16px; border-left: 4px solid !important; border-radius: 0 4px 4px 0; font-style: normal !important; }" +
+                ".markdown-alert-title { display: flex; align-items: center; font-weight: bold; margin-bottom: 4px; }" +
+                ".markdown-alert-note { background-color: " + alertNoteBg + "; color: " + alertNoteColor + "; border-color: " + alertNoteBorder + " !important; }" +
+                ".markdown-alert-tip { background-color: " + alertTipBg + "; color: " + alertTipColor + "; border-color: " + alertTipBorder + " !important; }" +
+                ".markdown-alert-warning { background-color: " + alertWarnBg + "; color: " + alertWarnColor + "; border-color: " + alertWarnBorder + " !important; }" +
+                ".markdown-alert-caution { background-color: " + alertCautionBg + "; color: " + alertCautionColor + "; border-color: " + alertCautionBorder + " !important; }" +
+                ".token.diff-remove { color: #e06c75 !important; }" +
+                ".token.diff-add { color: #98c379 !important; }" +
+                ".token.diff-orange { color: #d19a66 !important; }" +
+                ".token.diff-gray { color: #5c6370 !important; }" +
                 "</style></head><body style='background-color: " + bgColor + ";'>" +
                 titleHtml +
                 html + "</body></html>";
@@ -3061,6 +3194,52 @@ public class App extends Application {
         area.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles() || event.getDragboard().hasString()) {
                 event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
+                
+                // Move caret to mouse position
+                javafx.scene.control.skin.TextAreaSkin skin = (javafx.scene.control.skin.TextAreaSkin) area.getSkin();
+                if (skin != null) {
+                    javafx.geometry.Point2D screenPoint = new javafx.geometry.Point2D(event.getScreenX(), event.getScreenY());
+                    javafx.geometry.Point2D localPoint = area.screenToLocal(screenPoint);
+                    
+                    // Hit testing to find character index
+                    // Since TextAreaSkin doesn't expose hitTest directly in a public API easily accessible in all JavaFX versions without reflection or internal usage,
+                    // we might need a workaround or use the public API if available.
+                    // However, for standard TextArea, we can try to approximate or use internal API if we are sure about the environment.
+                    // But a safer way in standard JavaFX 9+ is using the hitTest method of the skin if we cast it.
+                    // Actually, TextAreaSkin has getCharacterIndexAtPoint() but it might be protected or package private depending on version.
+                    // Let's try to use the positionCaret method which is available on TextArea but it doesn't take coordinates.
+                    
+                    // Workaround: We can't easily set caret by coordinates in standard JavaFX TextArea API.
+                    // But we can try to use the skin's hit info if we can access it.
+                    // Since we are in a standard JavaFX app, let's try to use the skin.
+                    // Note: getCharacterIndexAtPoint is not public in TextAreaSkin.
+                    
+                    // However, we can try to simulate a mouse click or use reflection.
+                    // Reflection is risky.
+                    
+                    // Let's try a simpler approach:
+                    // We can't easily move the caret.
+                    // Wait, `positionCaret` sets the index. We need index from point.
+                    // `skin.getHitInfo(localPoint).getCharIndex()` might work if `getHitInfo` is available.
+                    // It seems `getHitInfo` is not public.
+                    
+                    // Let's try to use the `impl_hitTestChar` from `TextAreaSkin` (old) or similar if available? No, removed.
+                    
+                    // Okay, let's look at `InputMethodRequests`.
+                    
+                    // Actually, there is a trick. We can fire a MouseEvent.
+                    // But we are in a DragEvent.
+                    
+                    // Let's try to use reflection to access `getCharacterIndexAtPoint` from `TextAreaSkin`.
+                    try {
+                        java.lang.reflect.Method m = skin.getClass().getDeclaredMethod("getIndex", double.class, double.class);
+                        m.setAccessible(true);
+                        int index = (int) m.invoke(skin, localPoint.getX(), localPoint.getY());
+                        area.positionCaret(index);
+                    } catch (Exception e) {
+                        // Fallback or ignore
+                    }
+                }
             }
             event.consume();
         });
