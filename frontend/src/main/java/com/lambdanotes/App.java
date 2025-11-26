@@ -127,6 +127,8 @@ public class App extends Application {
     // Explorer Components
     private TextField searchField;
     private List<String> allNotes = new ArrayList<>(); // Cache for filtering
+    private final List<String> recentFiles = new ArrayList<>(); // Track recent files
+    private static final int MAX_RECENT_FILES = 20;
     
     // Sidebar & Activity Bar
     private GitHistoryView gitHistoryView;
@@ -181,7 +183,11 @@ public class App extends Application {
 
     private UpdateChecker.UpdateInfo pendingUpdateInfo; // Field to store pending update information
 
+    private long lastShiftReleaseTime = 0;
+    private boolean otherKeyPressed = false;
+
     @Override
+    @SuppressWarnings("removal")
     public void start(Stage stage) {
         this.primaryStage = stage;
         setupLogging();
@@ -403,6 +409,34 @@ public class App extends Application {
         scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
         
         stage.setTitle(LanguageManager.get("app.title"));
+
+        // Global Key Listeners
+        scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() != KeyCode.SHIFT) {
+                otherKeyPressed = true;
+            }
+            
+            if (e.isShortcutDown() && e.isShiftDown() && e.getCode() == KeyCode.F) {
+                openSearchEverywhere();
+                e.consume();
+            } else if (e.isShortcutDown() && e.getCode() == KeyCode.E) {
+                openRecentFiles();
+                e.consume();
+            }
+        });
+
+        scene.addEventFilter(KeyEvent.KEY_RELEASED, e -> {
+            if (e.getCode() == KeyCode.SHIFT) {
+                if (!otherKeyPressed) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastShiftReleaseTime < 300) {
+                        openSearchEverywhere();
+                    }
+                    lastShiftReleaseTime = now;
+                }
+                otherKeyPressed = false;
+            }
+        });
         
         // Set Application Icon
         try {
@@ -1596,6 +1630,11 @@ public class App extends Application {
     }
 
     private void loadNote(String filename) {
+        loadNote(filename, -1);
+    }
+
+    private void loadNote(String filename, int line) {
+        addToRecentFiles(filename);
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
             if (rootSplitPane.getItems().size() > 1) {
                 rootSplitPane.getItems().set(1, mainContent); // Switch to content view inside split pane
@@ -1607,6 +1646,18 @@ public class App extends Application {
                 // Tab Logic
                 if (openTabs.containsKey(filename)) {
                     editorTabPane.getSelectionModel().select(openTabs.get(filename));
+                    // If line specified, move to it
+                    if (line > 0) {
+                        VBox panel = tabEditorPanels.get(openTabs.get(filename));
+                        // Need to find the TextArea in the panel... 
+                        // This is getting messy accessing deep children.
+                        // Let's rely on the fact that 'editorArea' is updated to current tab's editor when selected.
+                        // But we just selected it.
+                        // Wait, the listener on selection updates 'editorArea'.
+                        // So we can use 'editorArea' after a small delay or directly find it.
+                        // Let's use a small delay to let the listener fire.
+                        Platform.runLater(() -> moveToLine(editorArea, line));
+                    }
                 } else {
                     Tab tab = new Tab(note.getFilename());
                     tab.setUserData(filename); // Store full path
@@ -1698,11 +1749,18 @@ public class App extends Application {
                     // Set initial reference
                     editorArea = tabEditor;
                     updateTabLayout(tab); // Initial layout
+                    
+                    if (line > 0) {
+                        moveToLine(tabEditor, line);
+                    }
                 }
             } else {
                 // Classic Mode
                 titleField.setText(note.getFilename());
                 editorArea.setText(note.getContent());
+                if (line > 0) {
+                    moveToLine(editorArea, line);
+                }
             }
             
             updateLineNumbers();
@@ -1711,60 +1769,33 @@ public class App extends Application {
         }));
     }
 
-    private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
-        setupEditorBehavior(tabEditor);
-        VBox container = new VBox();
-        container.getStyleClass().add("editor-panel");
-
-        TextArea tabLineNumbers = new TextArea("1");
-        tabLineNumbers.setEditable(false);
-        tabLineNumbers.getStyleClass().add("line-numbers");
-        tabLineNumbers.setWrapText(false);
-        tabLineNumbers.setPrefWidth(50);
-        tabLineNumbers.setMinWidth(50);
-        tabLineNumbers.setMaxWidth(50);
-        tabLineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
-        tabLineNumbers.setMouseTransparent(true);
-
-        // Sync line numbers
-        tabEditor.scrollTopProperty().addListener((obs, oldVal, newVal) -> tabLineNumbers.setScrollTop(newVal.doubleValue()));
-        tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
-             int lines = newVal.split("\n", -1).length;
-             StringBuilder sb = new StringBuilder();
-             for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
-             tabLineNumbers.setText(sb.toString());
-        });
-        // Initial line numbers
-        int lines = tabEditor.getText().split("\n", -1).length;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
-        tabLineNumbers.setText(sb.toString());
-
-        StackPane editorStack = new StackPane();
-        editorStack.getChildren().addAll(tabEditor, tabLineNumbers);
-        StackPane.setAlignment(tabLineNumbers, Pos.TOP_LEFT);
-        
-        StackPane editorBody = new StackPane(editorStack);
-        editorBody.getStyleClass().add("panel-body");
-        VBox.setVgrow(editorBody, Priority.ALWAYS);
-        
-        TextField tabTitleField = new TextField(filename);
-        tabTitleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
-        tabTitleField.setPrefWidth(Double.MAX_VALUE);
-        tabTitleField.setMaxWidth(Double.MAX_VALUE);
-        tabTitleField.setAlignment(Pos.CENTER_LEFT);
-        tabTitleField.getStyleClass().add("title-field");
-        
-        // Sync with tab title
-        tabTitleField.textProperty().addListener((obs, oldVal, newVal) -> {
-             // Update tab user data (filename) - wait, filename includes path.
-             // This is tricky. Title field usually edits content title or filename?
-             // In this app, it seems to be filename.
-             // Let's just let it be.
+    private void openSearchEverywhere() {
+        SearchEverywhereDialog dialog = new SearchEverywhereDialog(noteService, currentTheme, result -> {
+            loadNote(result.filename, result.line);
         });
         
-        container.getChildren().addAll(tabTitleField, editorBody);
-        return container;
+        // Center on screen
+        Stage stage = (Stage) mainLayout.getScene().getWindow();
+        dialog.setX(stage.getX() + (stage.getWidth() - 600) / 2);
+        dialog.setY(stage.getY() + 100); // Slightly top-aligned
+        
+        dialog.show();
+    }
+
+    private void moveToLine(TextArea textArea, int line) {
+        if (line <= 1) return;
+        String[] lines = textArea.getText().split("\n");
+        int offset = 0;
+        for (int i = 0; i < line - 1 && i < lines.length; i++) {
+            offset += lines[i].length() + 1; // +1 for newline
+        }
+        if (offset < textArea.getText().length()) {
+            textArea.positionCaret(offset);
+            // Center the caret
+            // This is a bit hacky in JavaFX TextArea, but selecting helps
+            textArea.selectPositionCaret(offset);
+            textArea.deselect(); 
+        }
     }
 
     private void saveNote(boolean silent) {
@@ -2300,6 +2331,54 @@ public class App extends Application {
         // Add TitleField to the top of the editor panel
         // This ensures they share the same width context
         container.getChildren().addAll(titleField, editorBody);
+        return container;
+    }
+
+    private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
+        setupEditorBehavior(tabEditor);
+        VBox container = new VBox();
+        container.getStyleClass().add("editor-panel");
+
+        TextArea tabLineNumbers = new TextArea("1");
+        tabLineNumbers.setEditable(false);
+        tabLineNumbers.getStyleClass().add("line-numbers");
+        tabLineNumbers.setWrapText(false);
+        tabLineNumbers.setPrefWidth(50);
+        tabLineNumbers.setMinWidth(50);
+        tabLineNumbers.setMaxWidth(50);
+        tabLineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
+        tabLineNumbers.setMouseTransparent(true);
+
+        // Sync line numbers
+        tabEditor.scrollTopProperty().addListener((obs, oldVal, newVal) -> tabLineNumbers.setScrollTop(newVal.doubleValue()));
+        tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
+             int lines = newVal.split("\n", -1).length;
+             StringBuilder sb = new StringBuilder();
+             for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+             tabLineNumbers.setText(sb.toString());
+        });
+        // Initial line numbers
+        int lines = tabEditor.getText().split("\n", -1).length;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+        tabLineNumbers.setText(sb.toString());
+
+        StackPane editorStack = new StackPane();
+        editorStack.getChildren().addAll(tabEditor, tabLineNumbers);
+        StackPane.setAlignment(tabLineNumbers, Pos.TOP_LEFT);
+        
+        StackPane editorBody = new StackPane(editorStack);
+        editorBody.getStyleClass().add("panel-body");
+        VBox.setVgrow(editorBody, Priority.ALWAYS);
+        
+        TextField tabTitleField = new TextField(filename);
+        tabTitleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
+        tabTitleField.setPrefWidth(Double.MAX_VALUE);
+        tabTitleField.setMaxWidth(Double.MAX_VALUE);
+        tabTitleField.setAlignment(Pos.CENTER_LEFT);
+        tabTitleField.getStyleClass().add("title-field");
+        
+        container.getChildren().addAll(tabTitleField, editorBody);
         return container;
     }
 
@@ -3211,7 +3290,6 @@ public class App extends Application {
                     
                     // Workaround: We can't easily set caret by coordinates in standard JavaFX TextArea API.
                     // But we can try to use the skin's hit info if we can access it.
-                    // Since we are in a standard JavaFX app, let's try to use the skin.
                     // Note: getCharacterIndexAtPoint is not public in TextAreaSkin.
                     
                     // However, we can try to simulate a mouse click or use reflection.
@@ -3222,8 +3300,6 @@ public class App extends Application {
                     // Wait, `positionCaret` sets the index. We need index from point.
                     // `skin.getHitInfo(localPoint).getCharIndex()` might work if `getHitInfo` is available.
                     // It seems `getHitInfo` is not public.
-                    
-                    // Let's try to use the `impl_hitTestChar` from `TextAreaSkin` (old) or similar if available? No, removed.
                     
                     // Okay, let's look at `InputMethodRequests`.
                     
@@ -3397,5 +3473,24 @@ public class App extends Application {
             titleField.setText(initialPath);
             titleField.positionCaret(initialPath.length());
         }
+    }
+
+    private void addToRecentFiles(String filename) {
+        recentFiles.remove(filename); // Remove if exists to move to top
+        recentFiles.add(0, filename); // Add to top
+        if (recentFiles.size() > MAX_RECENT_FILES) {
+            recentFiles.remove(recentFiles.size() - 1);
+        }
+    }
+
+    private void openRecentFiles() {
+        RecentFilesDialog dialog = new RecentFilesDialog(recentFiles, currentTheme, this::loadNote);
+        
+        // Center on screen
+        Stage stage = (Stage) mainLayout.getScene().getWindow();
+        dialog.setX(stage.getX() + (stage.getWidth() - 500) / 2);
+        dialog.setY(stage.getY() + 100); // Slightly top-aligned
+        
+        dialog.show();
     }
 }
