@@ -367,7 +367,7 @@ public class App extends Application {
         rootSplitPane = new SplitPane();
         rootSplitPane.getStyleClass().add("root-split-pane");
         rootSplitPane.getItems().addAll(sidebarContainer, emptyState); // Start with empty state
-        rootSplitPane.setDividerPositions(0.2); // 20% sidebar
+        rootSplitPane.setDividerPositions(0.15); // 15% sidebar
         
         // Set initial center to Root SplitPane
         mainLayout.setCenter(rootSplitPane);
@@ -578,7 +578,10 @@ public class App extends Application {
     }
 
     private void toggleMaximize(Stage stage) {
-        Screen screen = Screen.getPrimary();
+        // Get the screen the stage is currently on
+        List<Screen> screens = Screen.getScreensForRectangle(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight());
+        Screen screen = screens.isEmpty() ? Screen.getPrimary() : screens.get(0);
+        
         Rectangle2D bounds = screen.getVisualBounds();
 
         if (isMaximized) {
@@ -644,7 +647,14 @@ public class App extends Application {
             yOffset[0] = event.getSceneY();
         });
         titleBar.setOnMouseDragged(event -> {
-            if (!isMaximized) {
+            if (isMaximized) {
+                toggleMaximize(stage);
+                double newX = event.getScreenX() - (stage.getWidth() / 2);
+                double newY = event.getScreenY() - yOffset[0];
+                stage.setX(newX);
+                stage.setY(newY);
+                xOffset[0] = stage.getWidth() / 2;
+            } else {
                 stage.setX(event.getScreenX() - xOffset[0]);
                 stage.setY(event.getScreenY() - yOffset[0]);
             }
