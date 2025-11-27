@@ -102,6 +102,7 @@ public class App extends Application {
     private String currentTheme = "Dark"; // Track current theme
     
     private double currentEditorFontSize = 16;
+    private String currentFontFamily = "JetBrains Mono";
     private static final double MAX_CONTENT_WIDTH = 900;
     
     // Layout Components
@@ -198,6 +199,16 @@ public class App extends Application {
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Bold.ttf"), 10);
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Italic.ttf"), 10);
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-BoldItalic.ttf"), 10);
+            
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-BoldItalic.ttf"), 10);
+            
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-BoldItalic.ttf"), 10);
         } catch (Exception e) {
             logger.warning("Could not load fonts: " + e.getMessage());
         }
@@ -1462,6 +1473,9 @@ public class App extends Application {
         
         if (editorArea != null) {
             currentEditorFontSize = config.getEditorFontSize();
+            if (config.getFontFamily() != null) {
+                currentFontFamily = config.getFontFamily();
+            }
             updateEditorStyle();
             // Update preview if visible to reflect font size change
             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) {
@@ -1547,7 +1561,7 @@ public class App extends Application {
         
         // Apply to Editor
         // Note: We removed .content padding in CSS to ensure exact alignment
-        editorArea.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+        editorArea.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
         
         // Apply to Title Field (if it exists)
         if (titleField != null) {
@@ -1557,7 +1571,7 @@ public class App extends Application {
             // Let's add a small buffer (e.g. 5px) to both to be safe and consistent, 
             // or just rely on the padding.
             // Let's try exact match first.
-            titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+            titleField.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
         }
     }
 
@@ -1570,10 +1584,26 @@ public class App extends Application {
         String html = renderer.render(parser.parse(markdown));
         
         // Get font URL for WebView
-        String fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
-        String fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
-        String fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
-        String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
+        String fontUrl, fontBoldUrl, fontItalicUrl, fontBoldItalicUrl;
+        String fontFamilyCss = currentFontFamily;
+
+        if ("Inter".equals(currentFontFamily)) {
+             fontUrl = getClass().getResource("fonts/Inter-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/Inter-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/Inter-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/Inter-BoldItalic.ttf").toExternalForm();
+        } else if ("Roboto".equals(currentFontFamily)) {
+             fontUrl = getClass().getResource("fonts/Roboto-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/Roboto-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/Roboto-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/Roboto-BoldItalic.ttf").toExternalForm();
+        } else {
+             // Default JetBrains Mono
+             fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
+        }
         
         String title = titleField != null ? titleField.getText() : "";
         // Remove extension for display if present
@@ -1755,14 +1785,14 @@ public class App extends Application {
                 "};" +
                 "</script>" +
                 "<style>" +
-                "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
-                "body { font-family: 'JetBrains Mono', sans-serif; font-size: " + currentEditorFontSize + "px; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; src: url('" + fontUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
+                "body { font-family: '" + fontFamilyCss + "', sans-serif; font-size: " + currentEditorFontSize + "px; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
                 ".note-title { font-size: 1.8em; font-weight: bold; color: " + titleColor + "; margin-bottom: 5px; border-bottom: none; opacity: 0.9; }" +
                 ".title-separator { border: 0; height: 1px; background-image: linear-gradient(to right, " + borderColor + ", rgba(0,0,0,0)); margin-bottom: 20px; }" +
-                "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
+                "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: '" + fontFamilyCss + "', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: " + textColor + "; font-weight: bold; }" +
                 "code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.9em; }" +
@@ -1771,7 +1801,7 @@ public class App extends Application {
                 "pre { background-color: " + codeBg + "; padding: 10px; border-radius: 6px; overflow-x: auto; border: 1px solid " + borderColor + "; margin: 0; }" +
                 "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
                 "pre[class*=\"language-\"], code[class*=\"language-\"] { background-color: transparent !important; text-shadow: none !important; font-family: 'JetBrains Mono', 'Consolas', monospace !important; }" +
-                ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: 'JetBrains Mono', sans-serif; }" +
+                ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: '" + fontFamilyCss + "', sans-serif; }" +
                 ".code-wrapper:hover .copy-button { opacity: 1; }" +
                 ".copy-button:hover { background-color: " + buttonHover + "; }" +
                 "blockquote { border-left: 4px solid " + linkColor + "; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
@@ -1852,7 +1882,7 @@ public class App extends Application {
                     double width = editorArea.getWidth(); // Use main editor width as reference
                     double hPadding = (width - MAX_CONTENT_WIDTH) / 2;
                     if (hPadding < 70) hPadding = 70;
-                    tabEditor.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+                    tabEditor.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
 
                     // Listeners
                     tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
