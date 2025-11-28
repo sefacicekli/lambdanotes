@@ -49,6 +49,7 @@ public class SettingsDialog extends Stage {
     // Editor Settings Components
     private Slider fontSizeSlider;
     private Label fontSizeValueLabel;
+    private ComboBox<String> fontFamilyComboBox;
     private CheckBox showLineNumbersCheckBox;
     private CheckBox showTabsCheckBox;
     private CheckBox showTitleInPreviewCheckBox;
@@ -158,18 +159,39 @@ public class SettingsDialog extends Stage {
     private void switchView(String category) {
         contentArea.getChildren().clear();
         
+        Region view = null;
+        
         if (category.equals(LanguageManager.get("settings.github"))) {
-            contentArea.getChildren().add(githubView);
+            view = githubView;
         } else if (category.equals(LanguageManager.get("settings.editor"))) {
-            contentArea.getChildren().add(editorView);
+            view = editorView;
         } else if (category.equals(LanguageManager.get("settings.general"))) {
-            contentArea.getChildren().add(generalView);
+            view = generalView;
         } else if (category.equals(LanguageManager.get("settings.appearance"))) {
-            contentArea.getChildren().add(appearanceView);
+            view = appearanceView;
         } else if (category.equals(LanguageManager.get("settings.about"))) {
             Label placeholder = new Label(java.text.MessageFormat.format(LanguageManager.get("settings.about.placeholder"), category));
             placeholder.setStyle("-fx-text-fill: #7c7f88; -fx-font-size: 14px;");
-            contentArea.getChildren().add(placeholder);
+            view = placeholder;
+        }
+
+        if (view != null) {
+            ScrollPane scrollPane = new ScrollPane(view);
+            scrollPane.setFitToWidth(true);
+            scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+            scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;");
+            
+            // Make viewport transparent
+            scrollPane.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+                if (newSkin != null) {
+                    javafx.scene.Node viewport = scrollPane.lookup(".viewport");
+                    if (viewport != null) {
+                        viewport.setStyle("-fx-background-color: transparent;");
+                    }
+                }
+            });
+            
+            contentArea.getChildren().add(scrollPane);
         }
     }
 
@@ -271,6 +293,24 @@ public class SettingsDialog extends Stage {
         Label header = new Label(LanguageManager.get("settings.editor.header"));
         header.getStyleClass().add("settings-header-label");
 
+        // Font Family Section
+        VBox fontFamilySection = new VBox(10);
+        Label fontFamilyLabel = new Label(LanguageManager.get("settings.editor.font_family"));
+        fontFamilyLabel.getStyleClass().add("settings-section-label");
+
+        fontFamilyComboBox = new ComboBox<>();
+        fontFamilyComboBox.getItems().addAll("JetBrains Mono", "Inter", "Roboto");
+        fontFamilyComboBox.setMaxWidth(200);
+        fontFamilyComboBox.getStyleClass().add("settings-combo-box");
+
+        if (currentConfig != null && currentConfig.getFontFamily() != null) {
+            fontFamilyComboBox.getSelectionModel().select(currentConfig.getFontFamily());
+        } else {
+            fontFamilyComboBox.getSelectionModel().select("JetBrains Mono");
+        }
+
+        fontFamilySection.getChildren().addAll(fontFamilyLabel, fontFamilyComboBox);
+
         // Font Size Section
         VBox fontSection = new VBox(10);
         Label fontLabel = new Label(LanguageManager.get("settings.editor.font_size"));
@@ -300,6 +340,8 @@ public class SettingsDialog extends Stage {
 
         sliderBox.getChildren().addAll(fontSizeSlider, fontSizeValueLabel);
         fontSection.getChildren().addAll(fontLabel, sliderBox);
+
+
 
         // Line Numbers Section
         VBox lineNumbersSection = new VBox(10);
@@ -339,7 +381,7 @@ public class SettingsDialog extends Stage {
 
         titlePreviewSection.getChildren().addAll(titlePreviewLabel, showTitleInPreviewCheckBox);
 
-        view.getChildren().addAll(header, fontSection, new Separator(), lineNumbersSection, titlePreviewSection);
+        view.getChildren().addAll(header, fontFamilySection, fontSection, new Separator(), lineNumbersSection, titlePreviewSection);
         return view;
     }
 
@@ -529,6 +571,7 @@ public class SettingsDialog extends Stage {
         String username = (currentConfig != null) ? currentConfig.getUsername() : "";
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (currentConfig != null) ? currentConfig.getEditorFontSize() : 16;
+        String fontFamily = (currentConfig != null && currentConfig.getFontFamily() != null) ? currentConfig.getFontFamily() : "JetBrains Mono";
         String theme = (currentConfig != null && currentConfig.getTheme() != null) ? currentConfig.getTheme() : "Dark";
 
         // Update from UI
@@ -547,6 +590,10 @@ public class SettingsDialog extends Stage {
         
         if (fontSizeSlider != null) {
             fontSize = (int) fontSizeSlider.getValue();
+        }
+
+        if (fontFamilyComboBox != null && fontFamilyComboBox.getValue() != null) {
+            fontFamily = fontFamilyComboBox.getValue();
         }
         
         boolean showLineNumbers = true;
@@ -575,6 +622,7 @@ public class SettingsDialog extends Stage {
 
         result = new AppConfig(repoUrl, token, username, email);
         result.setEditorFontSize(fontSize);
+        result.setFontFamily(fontFamily);
         result.setShowLineNumbers(showLineNumbers);
         result.setShowTabs(showTabs);
         result.setShowTitleInPreview(showTitleInPreview);
@@ -841,6 +889,7 @@ public class SettingsDialog extends Stage {
                 if (importedConfig != null) {
                     if (importedConfig.getToken() != null) tokenField.setText(importedConfig.getToken());
                     if (fontSizeSlider != null) fontSizeSlider.setValue(importedConfig.getEditorFontSize());
+                    if (fontFamilyComboBox != null && importedConfig.getFontFamily() != null) fontFamilyComboBox.getSelectionModel().select(importedConfig.getFontFamily());
                     if (showLineNumbersCheckBox != null) showLineNumbersCheckBox.setSelected(importedConfig.isShowLineNumbers());
                     if (showTabsCheckBox != null) showTabsCheckBox.setSelected(importedConfig.isShowTabs());
                     if (themeComboBox != null && importedConfig.getTheme() != null) themeComboBox.getSelectionModel().select(importedConfig.getTheme());
@@ -881,6 +930,7 @@ public class SettingsDialog extends Stage {
         String username = (currentConfig != null) ? currentConfig.getUsername() : "";
         String email = (currentConfig != null) ? currentConfig.getEmail() : "";
         int fontSize = (int) fontSizeSlider.getValue();
+        String fontFamily = fontFamilyComboBox.getValue();
         boolean showLineNumbers = showLineNumbersCheckBox.isSelected();
         boolean showTabs = showTabsCheckBox.isSelected();
         boolean showTitleInPreview = showTitleInPreviewCheckBox.isSelected();
@@ -899,6 +949,7 @@ public class SettingsDialog extends Stage {
 
         AppConfig configToExport = new AppConfig(repoUrl, token, username, email);
         configToExport.setEditorFontSize(fontSize);
+        configToExport.setFontFamily(fontFamily);
         configToExport.setShowLineNumbers(showLineNumbers);
         configToExport.setShowTabs(showTabs);
         configToExport.setShowTitleInPreview(showTitleInPreview);

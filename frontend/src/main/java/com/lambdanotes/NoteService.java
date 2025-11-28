@@ -430,5 +430,48 @@ public class NoteService {
                     return response.body();
                 });
     }
+
+    public CompletableFuture<String> sendGraphQLRequest(String query) {
+        String json = gson.toJson(java.util.Map.of("query", query));
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/github/graphql"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("GraphQL request failed: " + response.body());
+                    }
+                    return response.body();
+                });
+    }
+
+    public static class SearchResult {
+        public String filename;
+        public int line;
+        public String context;
+    }
+
+    public CompletableFuture<List<SearchResult>> searchNotes(String query) {
+        // Escape quotes in query
+        String escapedQuery = query.replace("\"", "\\\"");
+        String json = String.format("{\"query\": \"%s\"}", escapedQuery);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL + "/search"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() != 200) {
+                        throw new RuntimeException("Search failed: " + response.body());
+                    }
+                    return gson.fromJson(response.body(), new TypeToken<List<SearchResult>>(){}.getType());
+                });
+    }
 }
 

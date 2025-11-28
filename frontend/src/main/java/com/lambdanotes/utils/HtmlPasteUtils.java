@@ -1,5 +1,7 @@
 package com.lambdanotes.utils;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -131,790 +133,1039 @@ public class HtmlPasteUtils {
             return normalizeLanguage(lang);
         }
 
-        // Try to detect from content patterns
+        // Try to detect from content patterns using a scoring system
         String content = extractPlainText(html);
         String lowerContent = content.toLowerCase();
         
-        // ===== Java (check early - very common) =====
-        if (containsJavaKeywords(content)) {
-            return "java";
-        }
+        Map<String, Integer> scores = new HashMap<>();
+        scores.put("java", calculateJavaScore(content));
+        scores.put("go", calculateGoScore(content));
+        scores.put("typescript", calculateTypeScriptScore(content));
+        scores.put("javascript", calculateJavaScriptScore(content));
+        scores.put("csharp", calculateCSharpScore(content));
+        scores.put("python", calculatePythonScore(content));
+        scores.put("c", calculateCScore(content));
+        scores.put("cpp", calculateCppScore(content));
+        scores.put("abap", calculateAbapScore(content, lowerContent));
+        scores.put("html", calculateHtmlScore(content, lowerContent));
+        scores.put("css", calculateCssScore(content));
+        scores.put("sql", calculateSqlScore(lowerContent));
+        scores.put("xml", calculateXmlScore(lowerContent));
+        scores.put("php", calculatePhpScore(content));
+        scores.put("ruby", calculateRubyScore(content));
+        scores.put("rust", calculateRustScore(content));
+        scores.put("bash", calculateBashScore(content));
+        scores.put("powershell", calculatePowerShellScore(content));
+        scores.put("yaml", calculateYamlScore(content));
+        scores.put("json", calculateJsonScore(content));
+
+        // Find the language with the highest score
+        String bestLang = "";
+        int maxScore = 0;
         
-        // ===== Go =====
-        if (containsGoKeywords(content)) {
-            return "go";
-        }
-        
-        // ===== TypeScript (check before JavaScript) =====
-        if (containsTypeScriptKeywords(content)) {
-            return "typescript";
-        }
-        
-        // ===== JavaScript =====
-        if (containsJavaScriptKeywords(content)) {
-            return "javascript";
-        }
-        
-        // ===== C# =====
-        if (containsCSharpKeywords(content)) {
-            return "csharp";
-        }
-        
-        // ===== Python =====
-        if (containsPythonKeywords(content)) {
-            return "python";
-        }
-        
-        // ===== C / C++ =====
-        if (containsCKeywords(content)) {
-            // Distinguish C++ from C
-            if (containsCppKeywords(content)) {
-                return "cpp";
+        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+            if (entry.getValue() > maxScore) {
+                maxScore = entry.getValue();
+                bestLang = entry.getKey();
             }
-            return "c";
         }
         
-        // ===== ABAP (check after other languages - has some common keywords) =====
-        if (containsAbapKeywords(content, lowerContent)) {
-            return "abap";
-        }
-        
-        // ===== HTML / XML =====
-        if (containsHtmlKeywords(content, lowerContent)) {
-            return "html";
-        }
-        
-        // XML (not HTML)
-        if (lowerContent.contains("<?xml") || lowerContent.contains("xmlns")) {
-            return "xml";
-        }
-        
-        // ===== CSS / SCSS =====
-        if (containsCssKeywords(content)) {
-            if (content.contains("$") && content.contains(":") || content.contains("@mixin") || content.contains("@include")) {
-                return "scss";
-            }
-            return "css";
-        }
-        
-        // ===== SQL =====
-        if (containsSqlKeywords(lowerContent)) {
-            return "sql";
-        }
-        
-        // ===== PHP =====
-        if (content.contains("<?php") || content.contains("<?=") ||
-            content.contains("$_GET") || content.contains("$_POST") ||
-            content.contains("$this->")) {
-            return "php";
-        }
-        
-        // ===== Ruby =====
-        if (content.contains("def ") && content.contains("end") ||
-            content.contains("puts ") || content.contains("attr_accessor") ||
-            content.contains(".each do")) {
-            return "ruby";
-        }
-        
-        // ===== Rust =====
-        if (content.contains("fn main()") || content.contains("let mut ") ||
-            content.contains("impl ") || content.contains("pub fn ") ||
-            content.contains("println!(")) {
-            return "rust";
-        }
-        
-        // ===== Shell / Bash =====
-        if (content.contains("#!/bin/bash") || content.contains("#!/bin/sh") ||
-            (content.contains("echo ") && content.contains("if ["))) {
-            return "bash";
-        }
-        
-        // ===== PowerShell =====
-        if (content.contains("Get-") || content.contains("Set-") ||
-            content.contains("Write-Host") || content.contains("-eq")) {
-            return "powershell";
-        }
-        
-        // ===== YAML =====
-        if (content.contains(": ") && content.contains("\n") && 
-            !content.contains("{") && !content.contains(";")) {
-            return "yaml";
-        }
-        
-        // ===== JSON =====
-        if ((content.trim().startsWith("{") && content.trim().endsWith("}")) ||
-            (content.trim().startsWith("[") && content.trim().endsWith("]"))) {
-            if (content.contains("\":")) {
-                return "json";
-            }
+        // Require a minimum score to avoid false positives
+        if (maxScore >= 2) {
+            return bestLang;
         }
 
         return ""; // No language detected
     }
     
     // ===== ABAP Keywords =====
-    private static boolean containsAbapKeywords(String content, String lower) {
+    private static int calculateAbapScore(String content, String lower) {
         // ABAP-specific keywords that don't appear in other languages
         // Require at least 2 ABAP-specific patterns to avoid false positives
-        int abapScore = 0;
+        int score = 0;
         
         // Very specific ABAP keywords (high confidence)
-        if (lower.contains("endloop")) abapScore += 3;
-        if (lower.contains("endform")) abapScore += 3;
-        if (lower.contains("endmethod")) abapScore += 3;
-        if (lower.contains("endclass")) abapScore += 3;
-        if (lower.contains("endfunction")) abapScore += 3;
-        if (lower.contains("endtry")) abapScore += 3;
-        if (lower.contains("endif.")) abapScore += 3; // ABAP uses endif. with period
-        if (lower.contains("endwhile")) abapScore += 3;
-        if (lower.contains("endcase")) abapScore += 3;
-        if (lower.contains("endselect")) abapScore += 3;
-        if (lower.contains("endat")) abapScore += 3;
-        if (lower.contains("enddo")) abapScore += 3;
+        if (lower.contains("endloop")) score += 3;
+        if (lower.contains("endform")) score += 3;
+        if (lower.contains("endmethod")) score += 3;
+        if (lower.contains("endclass")) score += 3;
+        if (lower.contains("endfunction")) score += 3;
+        if (lower.contains("endtry")) score += 3;
+        if (lower.contains("endif.")) score += 3; // ABAP uses endif. with period
+        if (lower.contains("endwhile")) score += 3;
+        if (lower.contains("endcase")) score += 3;
+        if (lower.contains("endselect")) score += 3;
+        if (lower.contains("endat")) score += 3;
+        if (lower.contains("enddo")) score += 3;
         
         // ABAP report/program declarations
-        if (lower.contains("report ") && !lower.contains("reporter")) abapScore += 3;
+        if (lower.contains("report ") && !lower.contains("reporter")) score += 3;
         
         // ABAP data declarations with colon
-        if (lower.contains("data:") || lower.contains("data :")) abapScore += 3;
-        if (lower.contains("types:") || lower.contains("types :")) abapScore += 3;
-        if (lower.contains("tables:") || lower.contains("tables :")) abapScore += 3;
-        if (lower.contains("parameters:") || lower.contains("parameters :")) abapScore += 3;
-        if (lower.contains("constants:") || lower.contains("constants :")) abapScore += 3;
+        if (lower.contains("data:") || lower.contains("data :")) score += 3;
+        if (lower.contains("types:") || lower.contains("types :")) score += 3;
+        if (lower.contains("tables:") || lower.contains("tables :")) score += 3;
+        if (lower.contains("parameters:") || lower.contains("parameters :")) score += 3;
+        if (lower.contains("constants:") || lower.contains("constants :")) score += 3;
         
         // ABAP internal table operations
-        if (lower.contains("loop at ")) abapScore += 3;
-        if (lower.contains("read table ")) abapScore += 3;
-        if (lower.contains("into table")) abapScore += 3;
-        if (lower.contains("into corresponding")) abapScore += 3;
-        if (lower.contains("append ") && lower.contains(" to ")) abapScore += 2;
-        if (lower.contains("delete adjacent")) abapScore += 3;
-        if (lower.contains("sort ") && lower.contains(" by ")) abapScore += 2;
+        if (lower.contains("loop at ")) score += 3;
+        if (lower.contains("read table ")) score += 3;
+        if (lower.contains("into table")) score += 3;
+        if (lower.contains("into corresponding")) score += 3;
+        if (lower.contains("append ") && lower.contains(" to ")) score += 2;
+        if (lower.contains("delete adjacent")) score += 3;
+        if (lower.contains("sort ") && lower.contains(" by ")) score += 2;
         
         // ABAP SELECT statements
-        if (lower.contains("select single")) abapScore += 3;
-        if (lower.contains("select * from")) abapScore += 2;
-        if (lower.contains("select ") && lower.contains(" into ") && lower.contains(" from ")) abapScore += 2;
+        if (lower.contains("select single")) score += 3;
+        if (lower.contains("select * from")) score += 2;
+        if (lower.contains("select ") && lower.contains(" into ") && lower.contains(" from ")) score += 2;
         
         // ABAP FORM/PERFORM
-        if (lower.contains("form ") && lower.contains("endform")) abapScore += 3;
-        if (lower.contains("perform ")) abapScore += 2;
+        if (lower.contains("form ") && lower.contains("endform")) score += 3;
+        if (lower.contains("perform ")) score += 2;
         
         // ABAP function calls
-        if (lower.contains("call function")) abapScore += 3;
-        if (lower.contains("call method")) abapScore += 3;
+        if (lower.contains("call function")) score += 3;
+        if (lower.contains("call method")) score += 3;
         
         // ABAP system variables
-        if (lower.contains("sy-subrc")) abapScore += 3;
-        if (lower.contains("sy-tabix")) abapScore += 3;
-        if (lower.contains("sy-index")) abapScore += 3;
-        if (lower.contains("sy-datum")) abapScore += 3;
-        if (lower.contains("sy-uzeit")) abapScore += 3;
-        if (lower.contains("sy-uname")) abapScore += 3;
+        if (lower.contains("sy-subrc")) score += 3;
+        if (lower.contains("sy-tabix")) score += 3;
+        if (lower.contains("sy-index")) score += 3;
+        if (lower.contains("sy-datum")) score += 3;
+        if (lower.contains("sy-uzeit")) score += 3;
+        if (lower.contains("sy-uname")) score += 3;
         
         // ABAP field symbols
-        if (lower.contains("field-symbols")) abapScore += 3;
-        if (lower.contains("<fs_")) abapScore += 3;
-        if (content.contains("ASSIGN ") || lower.contains(" assign ")) abapScore += 2;
-        if (lower.contains("unassign")) abapScore += 3;
+        if (lower.contains("field-symbols")) score += 3;
+        if (lower.contains("<fs_")) score += 3;
+        if (content.contains("ASSIGN ") || lower.contains(" assign ")) score += 2;
+        if (lower.contains("unassign")) score += 3;
         
         // ABAP specific type declarations
-        if (lower.contains("type ref to")) abapScore += 3;
-        if (lower.contains("type table of")) abapScore += 3;
-        if (lower.contains("type standard table")) abapScore += 3;
-        if (lower.contains("type sorted table")) abapScore += 3;
-        if (lower.contains("type hashed table")) abapScore += 3;
-        if (lower.contains("with header line")) abapScore += 3;
-        if (lower.contains("begin of") && lower.contains("end of")) abapScore += 3;
+        if (lower.contains("type ref to")) score += 3;
+        if (lower.contains("type table of")) score += 3;
+        if (lower.contains("type standard table")) score += 3;
+        if (lower.contains("type sorted table")) score += 3;
+        if (lower.contains("type hashed table")) score += 3;
+        if (lower.contains("with header line")) score += 3;
+        if (lower.contains("begin of") && lower.contains("end of")) score += 3;
         
         // ABAP function/method parameters
-        if (lower.contains("exporting") && (lower.contains("importing") || lower.contains("tables"))) abapScore += 3;
-        if (lower.contains("changing ") && lower.contains("=")) abapScore += 2;
-        if (lower.contains("returning value")) abapScore += 3;
+        if (lower.contains("exporting") && (lower.contains("importing") || lower.contains("tables"))) score += 3;
+        if (lower.contains("changing ") && lower.contains("=")) score += 2;
+        if (lower.contains("returning value")) score += 3;
         
         // ABAP class definitions
-        if (lower.contains("class ") && lower.contains("definition")) abapScore += 3;
-        if (lower.contains("class ") && lower.contains("implementation")) abapScore += 3;
+        if (lower.contains("class ") && lower.contains("definition")) score += 3;
+        if (lower.contains("class ") && lower.contains("implementation")) score += 3;
         
         // ABAP events
-        if (lower.contains("at selection-screen")) abapScore += 3;
-        if (lower.contains("start-of-selection")) abapScore += 3;
-        if (lower.contains("end-of-selection")) abapScore += 3;
-        if (lower.contains("initialization")) abapScore += 2;
+        if (lower.contains("at selection-screen")) score += 3;
+        if (lower.contains("start-of-selection")) score += 3;
+        if (lower.contains("end-of-selection")) score += 3;
+        if (lower.contains("initialization")) score += 2;
         
         // ABAP string operations
-        if (lower.contains("concatenate ") && lower.contains(" into ")) abapScore += 3;
-        if (lower.contains("split ") && lower.contains(" at ")) abapScore += 3;
-        if (lower.contains("condense ")) abapScore += 3;
-        if (lower.contains("translate ") && lower.contains(" to ")) abapScore += 2;
+        if (lower.contains("concatenate ") && lower.contains(" into ")) score += 3;
+        if (lower.contains("split ") && lower.contains(" at ")) score += 3;
+        if (lower.contains("condense ")) score += 3;
+        if (lower.contains("translate ") && lower.contains(" to ")) score += 2;
         
         // ABAP write statements
-        if (lower.contains("write:") || lower.contains("write /") || lower.contains("write:")) abapScore += 3;
+        if (lower.contains("write:") || lower.contains("write /") || lower.contains("write:")) score += 3;
         
         // Modern ABAP expressions
-        if (lower.contains("new #(")) abapScore += 3;
-        if (lower.contains("value #(")) abapScore += 3;
-        if (lower.contains("conv #(")) abapScore += 3;
-        if (lower.contains("cond #(")) abapScore += 3;
-        if (lower.contains("switch #(")) abapScore += 3;
-        if (lower.contains("corresponding #(")) abapScore += 3;
+        if (lower.contains("new #(")) score += 3;
+        if (lower.contains("value #(")) score += 3;
+        if (lower.contains("conv #(")) score += 3;
+        if (lower.contains("cond #(")) score += 3;
+        if (lower.contains("switch #(")) score += 3;
+        if (lower.contains("corresponding #(")) score += 3;
         
         // ABAP predicates
-        if (lower.contains("is initial")) abapScore += 2;
-        if (lower.contains("is not initial")) abapScore += 3;
-        if (lower.contains("is bound")) abapScore += 3;
-        if (lower.contains("is assigned")) abapScore += 3;
-        if (lower.contains("line_exists(")) abapScore += 3;
+        if (lower.contains("is initial")) score += 2;
+        if (lower.contains("is not initial")) score += 3;
+        if (lower.contains("is bound")) score += 3;
+        if (lower.contains("is assigned")) score += 3;
+        if (lower.contains("line_exists(")) score += 3;
         
         // ABAP transaction/database
-        if (lower.contains("commit work")) abapScore += 3;
-        if (lower.contains("rollback work")) abapScore += 3;
-        if (lower.contains("authority-check")) abapScore += 3;
+        if (lower.contains("commit work")) score += 3;
+        if (lower.contains("rollback work")) score += 3;
+        if (lower.contains("authority-check")) score += 3;
         
         // ABAP message statement
-        if (lower.contains("message ") && lower.contains(" type ")) abapScore += 2;
+        if (lower.contains("message ") && lower.contains(" type ")) score += 2;
         
         // ABAP-specific functions
-        if (lower.contains("lines(")) abapScore += 2;
-        if (lower.contains("strlen(") && !content.contains("strlen(const")) abapScore += 1; // C has strlen too
-        if (lower.contains("xstrlen(")) abapScore += 3;
-        if (lower.contains("boolc(")) abapScore += 3;
-        if (lower.contains("xsdbool(")) abapScore += 3;
+        if (lower.contains("lines(")) score += 2;
+        if (lower.contains("strlen(") && !content.contains("strlen(const")) score += 1; // C has strlen too
+        if (lower.contains("xstrlen(")) score += 3;
+        if (lower.contains("boolc(")) score += 3;
+        if (lower.contains("xsdbool(")) score += 3;
         
-        // Require significant ABAP score to avoid false positives
-        return abapScore >= 5;
+        return score;
     }
     
     // ===== HTML Keywords =====
-    private static boolean containsHtmlKeywords(String content, String lower) {
-        return lower.contains("<!doctype html") ||
-               (lower.contains("<html") && lower.contains("</html>")) ||
-               (lower.contains("<head>") || lower.contains("<head ")) ||
-               (lower.contains("<body>") || lower.contains("<body ")) ||
-               (lower.contains("<div") && lower.contains("</div>")) ||
-               (lower.contains("<span") && lower.contains("</span>")) ||
-               (lower.contains("<p>") || lower.contains("<p ")) ||
-               (lower.contains("<h1") || lower.contains("<h2") || lower.contains("<h3")) ||
-               (lower.contains("<ul") || lower.contains("<ol") || lower.contains("<li")) ||
-               (lower.contains("<table") || lower.contains("<tr") || lower.contains("<td")) ||
-               (lower.contains("<form") && lower.contains("</form>")) ||
-               (lower.contains("<input") || lower.contains("<button") || lower.contains("<select")) ||
-               (lower.contains("<a ") && lower.contains("href=")) ||
-               (lower.contains("<img") && lower.contains("src=")) ||
-               (lower.contains("<link") && lower.contains("rel=")) ||
-               (lower.contains("<meta") && (lower.contains("charset") || lower.contains("content="))) ||
-               (lower.contains("<script") && lower.contains("</script>")) ||
-               (lower.contains("<style") && lower.contains("</style>")) ||
-               (lower.contains("<nav") || lower.contains("<header") || lower.contains("<footer")) ||
-               (lower.contains("<section") || lower.contains("<article") || lower.contains("<aside")) ||
-               (lower.contains("<main") || lower.contains("<figure") || lower.contains("<figcaption")) ||
-               lower.contains("<br") || lower.contains("<hr") ||
-               lower.contains("<strong") || lower.contains("<em") || lower.contains("<b>") ||
-               lower.contains("<iframe") || lower.contains("<video") || lower.contains("<audio") ||
-               lower.contains("<canvas") || lower.contains("<svg") ||
-               lower.contains("class=\"") || lower.contains("id=\"") || lower.contains("style=\"");
+    private static int calculateHtmlScore(String content, String lower) {
+        int score = 0;
+        if (lower.contains("<!doctype html")) score += 5;
+        if (lower.contains("<html") && lower.contains("</html>")) score += 5;
+        if (lower.contains("<head>") || lower.contains("<head ")) score += 3;
+        if (lower.contains("<body>") || lower.contains("<body ")) score += 3;
+        if (lower.contains("<div") && lower.contains("</div>")) score += 3;
+        if (lower.contains("<span") && lower.contains("</span>")) score += 3;
+        if (lower.contains("<p>") || lower.contains("<p ")) score += 2;
+        if (lower.contains("<h1") || lower.contains("<h2") || lower.contains("<h3")) score += 2;
+        if (lower.contains("<ul") || lower.contains("<ol") || lower.contains("<li")) score += 2;
+        if (lower.contains("<table") || lower.contains("<tr") || lower.contains("<td")) score += 3;
+        if (lower.contains("<form") && lower.contains("</form>")) score += 3;
+        if (lower.contains("<input") || lower.contains("<button") || lower.contains("<select")) score += 2;
+        if (lower.contains("<a ") && lower.contains("href=")) score += 3;
+        if (lower.contains("<img") && lower.contains("src=")) score += 3;
+        if (lower.contains("<link") && lower.contains("rel=")) score += 3;
+        if (lower.contains("<meta") && (lower.contains("charset") || lower.contains("content="))) score += 3;
+        if (lower.contains("<script") && lower.contains("</script>")) score += 3;
+        if (lower.contains("<style") && lower.contains("</style>")) score += 3;
+        if (lower.contains("<nav") || lower.contains("<header") || lower.contains("<footer")) score += 2;
+        if (lower.contains("<section") || lower.contains("<article") || lower.contains("<aside")) score += 2;
+        if (lower.contains("<main") || lower.contains("<figure") || lower.contains("<figcaption")) score += 2;
+        if (lower.contains("<br") || lower.contains("<hr")) score += 1;
+        if (lower.contains("<strong") || lower.contains("<em") || lower.contains("<b>")) score += 1;
+        if (lower.contains("<iframe") || lower.contains("<video") || lower.contains("<audio")) score += 2;
+        if (lower.contains("<canvas") || lower.contains("<svg")) score += 2;
+        if (lower.contains("class=\"") || lower.contains("id=\"") || lower.contains("style=\"")) score += 2;
+        
+        return score;
     }
     
     // ===== Go Keywords =====
-    private static boolean containsGoKeywords(String content) {
-        return content.contains("package main") ||
-               content.contains("package ") && content.contains("import") ||
-               content.contains("func ") && content.contains(") {") ||
-               content.contains("func main()") ||
-               content.contains(":= ") ||
-               content.contains("go func") ||
-               content.contains("interface{}") ||
-               content.contains("struct {") ||
-               content.contains("*sql.DB") || content.contains("*http.") ||
-               content.contains("http.Handle") || content.contains("http.ListenAndServe") ||
-               content.contains("fmt.Print") || content.contains("fmt.Sprintf") ||
-               content.contains("log.Print") || content.contains("log.Fatal") ||
-               content.contains("err != nil") || content.contains("err == nil") ||
-               content.contains("if err != nil") ||
-               content.contains("defer ") ||
-               content.contains("go ") && content.contains("chan ") ||
-               content.contains("make(") && (content.contains("[]") || content.contains("map[") || content.contains("chan ")) ||
-               content.contains("append(") ||
-               content.contains("range ") ||
-               content.contains("select {") ||
-               content.contains("case <-") ||
-               content.contains("fallthrough") ||
-               content.contains("type ") && content.contains(" struct") ||
-               content.contains("type ") && content.contains(" interface") ||
-               content.contains("json.Marshal") || content.contains("json.Unmarshal") ||
-               content.contains("ioutil.") || content.contains("os.") ||
-               content.contains("filepath.") || content.contains("strings.") ||
-               content.contains("strconv.") || content.contains("time.") ||
-               content.contains("context.") || content.contains("sync.") ||
-               content.contains("var ") && content.contains(" = ") && !content.contains(";") ||
-               content.contains("const (") ||
-               content.contains("nil") && content.contains("func ");
+    private static int calculateGoScore(String content) {
+        int score = 0;
+        if (content.contains("package main")) score += 5;
+        if (content.contains("package ") && content.contains("import")) score += 3;
+        if (content.contains("func ") && content.contains(") {")) score += 3;
+        if (content.contains("func main()")) score += 5;
+        if (content.contains(":= ")) score += 3;
+        if (content.contains("go func")) score += 4;
+        if (content.contains("interface{}")) score += 3;
+        if (content.contains("struct {")) score += 3;
+        if (content.contains("*sql.DB") || content.contains("*http.")) score += 3;
+        if (content.contains("http.Handle") || content.contains("http.ListenAndServe")) score += 3;
+        if (content.contains("fmt.Print") || content.contains("fmt.Sprintf")) score += 3;
+        if (content.contains("log.Print") || content.contains("log.Fatal")) score += 3;
+        if (content.contains("err != nil") || content.contains("err == nil")) score += 3;
+        if (content.contains("if err != nil")) score += 4;
+        if (content.contains("defer ")) score += 3;
+        if (content.contains("go ") && content.contains("chan ")) score += 3;
+        if (content.contains("make(") && (content.contains("[]") || content.contains("map[") || content.contains("chan "))) score += 3;
+        if (content.contains("append(")) score += 2;
+        if (content.contains("range ")) score += 2;
+        if (content.contains("select {")) score += 2;
+        if (content.contains("case <-")) score += 3;
+        if (content.contains("fallthrough")) score += 3;
+        if (content.contains("type ") && content.contains(" struct")) score += 3;
+        if (content.contains("type ") && content.contains(" interface")) score += 3;
+        if (content.contains("json.Marshal") || content.contains("json.Unmarshal")) score += 3;
+        if (content.contains("ioutil.") || content.contains("os.")) score += 2;
+        if (content.contains("filepath.") || content.contains("strings.")) score += 2;
+        if (content.contains("strconv.") || content.contains("time.")) score += 2;
+        if (content.contains("context.") || content.contains("sync.")) score += 2;
+        if (content.contains("var ") && content.contains(" = ") && !content.contains(";")) score += 2;
+        if (content.contains("const (")) score += 3;
+        if (content.contains("nil") && content.contains("func ")) score += 2;
+        
+        return score;
     }
     
     // ===== Java Keywords =====
-    private static boolean containsJavaKeywords(String content) {
-        return content.contains("public class ") ||
-               content.contains("private class ") ||
-               content.contains("protected class ") ||
-               content.contains("public interface ") ||
-               content.contains("public enum ") ||
-               content.contains("public abstract ") ||
-               content.contains("private void ") ||
-               content.contains("public void ") ||
-               content.contains("protected void ") ||
-               content.contains("private static ") ||
-               content.contains("public static ") ||
-               content.contains("public static void main") ||
-               content.contains("import java.") ||
-               content.contains("import javax.") ||
-               content.contains("import org.") && content.contains(";") ||
-               content.contains("@Override") ||
-               content.contains("@Autowired") ||
-               content.contains("@Component") ||
-               content.contains("@Service") ||
-               content.contains("@Repository") ||
-               content.contains("@Controller") ||
-               content.contains("@RestController") ||
-               content.contains("@RequestMapping") ||
-               content.contains("@GetMapping") || content.contains("@PostMapping") ||
-               content.contains("@Entity") || content.contains("@Table") ||
-               content.contains("@Id") || content.contains("@Column") ||
-               content.contains("@Test") || content.contains("@Before") || content.contains("@After") ||
-               content.contains("System.out.print") ||
-               content.contains("System.err.") ||
-               content.contains("new ArrayList") || content.contains("new LinkedList") ||
-               content.contains("new HashMap") || content.contains("new HashSet") ||
-               content.contains("new StringBuilder") || content.contains("new StringBuffer") ||
-               content.contains("extends ") && content.contains("{") ||
-               content.contains("implements ") && content.contains("{") ||
-               content.contains("throws ") ||
-               content.contains("try {") || content.contains("catch (") || content.contains("finally {") ||
-               content.contains("synchronized ") ||
-               content.contains("volatile ") ||
-               content.contains("transient ") ||
-               content.contains("instanceof ") ||
-               content.contains(".stream()") || content.contains(".collect(") ||
-               content.contains(".forEach(") || content.contains(".map(") ||
-               content.contains("Optional.") ||
-               content.contains("CompletableFuture") ||
-               content.contains("Logger.") || content.contains("LoggerFactory.");
+    private static int calculateJavaScore(String content) {
+        int score = 0;
+        if (content.contains("public class ")) score += 3;
+        if (content.contains("private class ")) score += 3;
+        if (content.contains("protected class ")) score += 3;
+        if (content.contains("public interface ")) score += 3;
+        if (content.contains("public enum ")) score += 3;
+        if (content.contains("public abstract ")) score += 3;
+        if (content.contains("private void ")) score += 3;
+        if (content.contains("public void ")) score += 3;
+        if (content.contains("protected void ")) score += 3;
+        if (content.contains("private static ")) score += 3;
+        if (content.contains("public static ")) score += 3;
+        if (content.contains("public static void main")) score += 5;
+        if (content.contains("import java.")) score += 4;
+        if (content.contains("import javax.")) score += 4;
+        if (content.contains("import org.") && content.contains(";")) score += 3;
+        if (content.contains("@Override")) score += 3;
+        if (content.contains("@Autowired")) score += 3;
+        if (content.contains("@Component")) score += 3;
+        if (content.contains("@Service")) score += 3;
+        if (content.contains("@Repository")) score += 3;
+        if (content.contains("@Controller")) score += 3;
+        if (content.contains("@RestController")) score += 3;
+        if (content.contains("@RequestMapping")) score += 3;
+        if (content.contains("@GetMapping") || content.contains("@PostMapping")) score += 3;
+        if (content.contains("@Entity") || content.contains("@Table")) score += 3;
+        if (content.contains("@Id") || content.contains("@Column")) score += 3;
+        if (content.contains("@Test") || content.contains("@Before") || content.contains("@After")) score += 2;
+        if (content.contains("System.out.print")) score += 4;
+        if (content.contains("System.err.")) score += 4;
+        if (content.contains("new ArrayList") || content.contains("new LinkedList")) score += 3;
+        if (content.contains("new HashMap") || content.contains("new HashSet")) score += 3;
+        if (content.contains("new StringBuilder") || content.contains("new StringBuffer")) score += 3;
+        if (content.contains("extends ") && content.contains("{")) score += 2;
+        if (content.contains("implements ") && content.contains("{")) score += 2;
+        if (content.contains("throws ")) score += 2;
+        if (content.contains("try {") || content.contains("catch (") || content.contains("finally {")) score += 2;
+        if (content.contains("synchronized ")) score += 3;
+        if (content.contains("volatile ")) score += 3;
+        if (content.contains("transient ")) score += 3;
+        if (content.contains("instanceof ")) score += 2;
+        if (content.contains(".stream()") || content.contains(".collect(")) score += 3;
+        if (content.contains(".forEach(") || content.contains(".map(")) score += 2;
+        if (content.contains("Optional.")) score += 3;
+        if (content.contains("CompletableFuture")) score += 3;
+        if (content.contains("Logger.") || content.contains("LoggerFactory.")) score += 2;
+        
+        return score;
     }
     
     // ===== TypeScript Keywords =====
-    private static boolean containsTypeScriptKeywords(String content) {
-        return content.contains(": string") ||
-               content.contains(": number") ||
-               content.contains(": boolean") ||
-               content.contains(": any") ||
-               content.contains(": void") ||
-               content.contains(": null") ||
-               content.contains(": undefined") ||
-               content.contains(": never") ||
-               content.contains(": unknown") ||
-               content.contains(": object") ||
-               content.contains("string[]") || content.contains("number[]") || content.contains("boolean[]") ||
-               content.contains("Array<") ||
-               content.contains("interface ") && content.contains("{") ||
-               content.contains("type ") && content.contains(" = ") && content.contains(";") ||
-               content.contains("<T>") || content.contains("<T,") || content.contains("<T extends") ||
-               content.contains("as string") || content.contains("as number") || content.contains("as any") ||
-               content.contains(": Promise<") ||
-               content.contains(": Observable<") ||
-               content.contains("readonly ") ||
-               content.contains("private ") && content.contains(": ") ||
-               content.contains("public ") && content.contains(": ") ||
-               content.contains("protected ") && content.contains(": ") ||
-               content.contains("constructor(") && content.contains(": ") ||
-               content.contains("implements ") ||
-               content.contains("extends ") && content.contains("<") ||
-               content.contains("keyof ") ||
-               content.contains("typeof ") && content.contains(": ") ||
-               content.contains("Partial<") || content.contains("Required<") || content.contains("Pick<") ||
-               content.contains("Omit<") || content.contains("Record<") || content.contains("Exclude<") ||
-               content.contains("Extract<") || content.contains("NonNullable<") ||
-               content.contains("ReturnType<") || content.contains("Parameters<") ||
-               content.contains("enum ") && content.contains("{") ||
-               content.contains("namespace ") && content.contains("{") ||
-               content.contains("declare ") ||
-               content.contains("abstract class ") ||
-               content.contains("@Injectable") || content.contains("@Component") ||
-               content.contains("@Input") || content.contains("@Output");
+    private static int calculateTypeScriptScore(String content) {
+        int score = 0;
+        if (content.contains(": string")) score += 3;
+        if (content.contains(": number")) score += 3;
+        if (content.contains(": boolean")) score += 3;
+        if (content.contains(": any")) score += 3;
+        if (content.contains(": void")) score += 3;
+        if (content.contains(": null")) score += 3;
+        if (content.contains(": undefined")) score += 3;
+        if (content.contains(": never")) score += 3;
+        if (content.contains(": unknown")) score += 3;
+        if (content.contains(": object")) score += 3;
+        if (content.contains("string[]") || content.contains("number[]") || content.contains("boolean[]")) score += 3;
+        if (content.contains("Array<")) score += 3;
+        if (content.contains("interface ") && content.contains("{")) score += 3;
+        if (content.contains("type ") && content.contains(" = ") && content.contains(";")) score += 3;
+        if (content.contains("<T>") || content.contains("<T,") || content.contains("<T extends")) score += 3;
+        if (content.contains("as string") || content.contains("as number") || content.contains("as any")) score += 3;
+        if (content.contains(": Promise<")) score += 3;
+        if (content.contains(": Observable<")) score += 3;
+        if (content.contains("readonly ")) score += 3;
+        if (content.contains("private ") && content.contains(": ")) score += 3;
+        if (content.contains("public ") && content.contains(": ")) score += 3;
+        if (content.contains("protected ") && content.contains(": ")) score += 3;
+        if (content.contains("constructor(") && content.contains(": ")) score += 3;
+        if (content.contains("implements ")) score += 2;
+        if (content.contains("extends ") && content.contains("<")) score += 3;
+        if (content.contains("keyof ")) score += 3;
+        if (content.contains("typeof ") && content.contains(": ")) score += 3;
+        if (content.contains("Partial<") || content.contains("Required<") || content.contains("Pick<")) score += 3;
+        if (content.contains("Omit<") || content.contains("Record<") || content.contains("Exclude<")) score += 3;
+        if (content.contains("Extract<") || content.contains("NonNullable<")) score += 3;
+        if (content.contains("ReturnType<") || content.contains("Parameters<")) score += 3;
+        if (content.contains("enum ") && content.contains("{")) score += 3;
+        if (content.contains("namespace ") && content.contains("{")) score += 3;
+        if (content.contains("declare ")) score += 3;
+        if (content.contains("abstract class ")) score += 3;
+        if (content.contains("@Injectable") || content.contains("@Component")) score += 3;
+        if (content.contains("@Input") || content.contains("@Output")) score += 3;
+        
+        return score;
     }
     
     // ===== JavaScript Keywords =====
-    private static boolean containsJavaScriptKeywords(String content) {
-        return content.contains("function ") && content.contains("(") && content.contains(") {") ||
-               content.contains("function(") ||
-               content.contains("const ") && content.contains(" = ") ||
-               content.contains("let ") && content.contains(" = ") ||
-               content.contains("var ") && content.contains(" = ") ||
-               content.contains("=> {") || content.contains("=> ") ||
-               content.contains("async ") || content.contains("await ") ||
-               content.contains("console.log") || content.contains("console.error") || content.contains("console.warn") ||
-               content.contains("document.") ||
-               content.contains("window.") ||
-               content.contains("addEventListener") || content.contains("removeEventListener") ||
-               content.contains("getElementById") || content.contains("querySelector") ||
-               content.contains("createElement") || content.contains("appendChild") ||
-               content.contains("innerHTML") || content.contains("textContent") ||
-               content.contains("className") || content.contains("classList") ||
-               content.contains("setAttribute") || content.contains("getAttribute") ||
-               content.contains("require(") ||
-               content.contains("module.exports") ||
-               content.contains("export default") ||
-               content.contains("export const") || content.contains("export function") ||
-               content.contains("export class") ||
-               content.contains("import ") && content.contains(" from ") ||
-               content.contains("import {") ||
-               content.contains("new Promise") ||
-               content.contains(".then(") || content.contains(".catch(") || content.contains(".finally(") ||
-               content.contains("fetch(") ||
-               content.contains("JSON.parse") || content.contains("JSON.stringify") ||
-               content.contains("Array.") || content.contains("Object.") || content.contains("String.") ||
-               content.contains(".map(") || content.contains(".filter(") || content.contains(".reduce(") ||
-               content.contains(".forEach(") || content.contains(".find(") || content.contains(".some(") ||
-               content.contains(".every(") || content.contains(".includes(") ||
-               content.contains("setTimeout") || content.contains("setInterval") ||
-               content.contains("localStorage") || content.contains("sessionStorage") ||
-               content.contains("try {") || content.contains("catch (") ||
-               content.contains("throw new Error") ||
-               content.contains("typeof ") || content.contains("instanceof ") ||
-               content.contains("null") || content.contains("undefined") ||
-               content.contains("true") || content.contains("false") ||
-               content.contains("this.") && !content.contains("$this->") ||
-               content.contains("class ") && content.contains("constructor(") ||
-               content.contains("extends ") && content.contains("super(") ||
-               content.contains("get ") && content.contains("() {") ||
-               content.contains("set ") && content.contains("(") && content.contains(") {") ||
-               content.contains("static ") && content.contains("() {");
+    private static int calculateJavaScriptScore(String content) {
+        int score = 0;
+        if (content.contains("function ") && content.contains("(") && content.contains(") {")) score += 3;
+        if (content.contains("function(")) score += 3;
+        if (content.contains("const ") && content.contains(" = ")) score += 2;
+        if (content.contains("let ") && content.contains(" = ")) score += 2;
+        if (content.contains("var ") && content.contains(" = ")) score += 2;
+        if (content.contains("=> {") || content.contains("=> ")) score += 3;
+        if (content.contains("async ") || content.contains("await ")) score += 3;
+        if (content.contains("console.log") || content.contains("console.error") || content.contains("console.warn")) score += 3;
+        if (content.contains("document.")) score += 3;
+        if (content.contains("window.")) score += 3;
+        if (content.contains("addEventListener") || content.contains("removeEventListener")) score += 3;
+        if (content.contains("getElementById") || content.contains("querySelector")) score += 3;
+        if (content.contains("createElement") || content.contains("appendChild")) score += 3;
+        if (content.contains("innerHTML") || content.contains("textContent")) score += 3;
+        if (content.contains("className") || content.contains("classList")) score += 3;
+        if (content.contains("setAttribute") || content.contains("getAttribute")) score += 3;
+        if (content.contains("require(")) score += 3;
+        if (content.contains("module.exports")) score += 3;
+        if (content.contains("export default")) score += 3;
+        if (content.contains("export const") || content.contains("export function")) score += 3;
+        if (content.contains("export class")) score += 3;
+        if (content.contains("import ") && content.contains(" from ")) score += 3;
+        if (content.contains("import {")) score += 2;
+        if (content.contains("new Promise")) score += 3;
+        if (content.contains(".then(") || content.contains(".catch(") || content.contains(".finally(")) score += 3;
+        if (content.contains("fetch(")) score += 3;
+        if (content.contains("JSON.parse") || content.contains("JSON.stringify")) score += 3;
+        if (content.contains("Array.") || content.contains("Object.") || content.contains("String.")) score += 2;
+        if (content.contains(".map(") || content.contains(".filter(") || content.contains(".reduce(")) score += 2;
+        if (content.contains(".forEach(") || content.contains(".find(") || content.contains(".some(")) score += 2;
+        if (content.contains(".every(") || content.contains(".includes(")) score += 2;
+        if (content.contains("setTimeout") || content.contains("setInterval")) score += 3;
+        if (content.contains("localStorage") || content.contains("sessionStorage")) score += 3;
+        if (content.contains("try {") || content.contains("catch (")) score += 2;
+        if (content.contains("throw new Error")) score += 3;
+        if (content.contains("typeof ") || content.contains("instanceof ")) score += 2;
+        if (content.contains("null") || content.contains("undefined")) score += 2;
+        if (content.contains("true") || content.contains("false")) score += 1;
+        if (content.contains("this.") && !content.contains("$this->")) score += 2;
+        if (content.contains("class ") && content.contains("constructor(")) score += 3;
+        if (content.contains("extends ") && content.contains("super(")) score += 3;
+        if (content.contains("get ") && content.contains("() {")) score += 2;
+        if (content.contains("set ") && content.contains("(") && content.contains(") {")) score += 2;
+        if (content.contains("static ") && content.contains("() {")) score += 2;
+        
+        return score;
     }
     
     // ===== Python Keywords =====
-    private static boolean containsPythonKeywords(String content) {
-        return content.contains("def ") && content.contains("):") ||
-               content.contains("async def ") ||
-               content.contains("class ") && content.contains("):") ||
-               content.contains("import ") && !content.contains("import {") && !content.contains("import java") ||
-               content.contains("from ") && content.contains(" import ") ||
-               content.contains("if __name__") ||
-               content.contains("self.") ||
-               content.contains("self,") ||
-               content.contains("cls.") || content.contains("cls,") ||
-               content.contains("print(") ||
-               content.contains("elif ") ||
-               content.contains("except ") || content.contains("except:") ||
-               content.contains("raise ") ||
-               content.contains("finally:") ||
-               content.contains("with ") && content.contains(" as ") ||
-               content.contains("lambda ") ||
-               content.contains("yield ") ||
-               content.contains("await ") ||
-               content.contains("pass") ||
-               content.contains("continue") ||
-               content.contains("break") ||
-               content.contains("return ") ||
-               content.contains("global ") ||
-               content.contains("nonlocal ") ||
-               content.contains("assert ") ||
-               content.contains("del ") ||
-               content.contains("True") || content.contains("False") || content.contains("None") ||
-               content.contains("and ") || content.contains(" or ") || content.contains("not ") ||
-               content.contains(" in ") && content.contains(":") ||
-               content.contains("for ") && content.contains(" in ") && content.contains(":") ||
-               content.contains("while ") && content.contains(":") ||
-               content.contains("if ") && content.contains(":") && !content.contains("{") ||
-               content.contains("else:") ||
-               content.contains("@property") || content.contains("@staticmethod") || content.contains("@classmethod") ||
-               content.contains("@abstractmethod") ||
-               content.contains("__init__") || content.contains("__str__") || content.contains("__repr__") ||
-               content.contains("__name__") || content.contains("__main__") ||
-               content.contains("__class__") || content.contains("__dict__") ||
-               content.contains("len(") || content.contains("range(") || content.contains("enumerate(") ||
-               content.contains("list(") || content.contains("dict(") || content.contains("set(") || content.contains("tuple(") ||
-               content.contains("str(") || content.contains("int(") || content.contains("float(") ||
-               content.contains("open(") || content.contains("read(") || content.contains("write(") ||
-               content.contains(".append(") || content.contains(".extend(") || content.contains(".pop(") ||
-               content.contains(".keys()") || content.contains(".values()") || content.contains(".items()") ||
-               content.contains(".join(") || content.contains(".split(") || content.contains(".strip()") ||
-               content.contains(".format(") || content.contains("f\"") || content.contains("f'") ||
-               content.contains("try:") || content.contains("except ") ||
-               content.contains("# ") && content.contains("\n");
+    private static int calculatePythonScore(String content) {
+        int score = 0;
+        if (content.contains("def ") && content.contains("):")) score += 5;
+        if (content.contains("async def ")) score += 5;
+        if (content.contains("class ") && content.contains("):")) score += 5;
+        if (content.contains("import ") && !content.contains("import {") && !content.contains("import java")) score += 2;
+        if (content.contains("from ") && content.contains(" import ")) score += 4;
+        if (content.contains("if __name__")) score += 5;
+        if (content.contains("self.")) score += 3;
+        if (content.contains("self,")) score += 3;
+        if (content.contains("cls.") || content.contains("cls,")) score += 3;
+        if (content.contains("print(")) score += 2;
+        if (content.contains("elif ")) score += 4;
+        if (content.contains("except ") || content.contains("except:")) score += 4;
+        if (content.contains("raise ")) score += 2;
+        if (content.contains("finally:")) score += 3;
+        if (content.contains("with ") && content.contains(" as ")) score += 3;
+        if (content.contains("lambda ")) score += 3;
+        if (content.contains("yield ")) score += 3;
+        if (content.contains("await ")) score += 2;
+        if (content.contains("pass")) score += 2;
+        if (content.contains("continue")) score += 1;
+        if (content.contains("break")) score += 1;
+        if (content.contains("return ")) score += 1;
+        if (content.contains("global ")) score += 3;
+        if (content.contains("nonlocal ")) score += 3;
+        if (content.contains("assert ")) score += 2;
+        if (content.contains("del ")) score += 2;
+        if (content.contains("True") || content.contains("False") || content.contains("None")) score += 2;
+        if (content.contains(" in ") && content.contains(":")) score += 2;
+        if (content.contains("for ") && content.contains(" in ") && content.contains(":")) score += 4;
+        if (content.contains("while ") && content.contains(":")) score += 3;
+        if (content.contains("if ") && content.contains(":") && !content.contains("{")) score += 2;
+        if (content.contains("else:")) score += 3;
+        if (content.contains("@property") || content.contains("@staticmethod") || content.contains("@classmethod")) score += 4;
+        if (content.contains("@abstractmethod")) score += 4;
+        if (content.contains("__init__") || content.contains("__str__") || content.contains("__repr__")) score += 5;
+        if (content.contains("__name__") || content.contains("__main__")) score += 4;
+        if (content.contains("__class__") || content.contains("__dict__")) score += 4;
+        if (content.contains("len(") || content.contains("range(") || content.contains("enumerate(")) score += 2;
+        if (content.contains("list(") || content.contains("dict(") || content.contains("set(") || content.contains("tuple(")) score += 2;
+        if (content.contains("str(") || content.contains("int(") || content.contains("float(")) score += 1;
+        if (content.contains("open(") || content.contains("read(") || content.contains("write(")) score += 1;
+        if (content.contains(".append(") || content.contains(".extend(") || content.contains(".pop(")) score += 2;
+        if (content.contains(".keys()") || content.contains(".values()") || content.contains(".items()")) score += 3;
+        if (content.contains(".join(") || content.contains(".split(") || content.contains(".strip()")) score += 2;
+        if (content.contains(".format(") || content.contains("f\"") || content.contains("f'")) score += 3;
+        if (content.contains("try:") || content.contains("except ")) score += 3;
+        if (content.contains("# ") && content.contains("\n")) score += 1;
+        
+        return score;
     }
     
     // ===== C Keywords =====
-    private static boolean containsCKeywords(String content) {
-        return content.contains("#include <") || content.contains("#include \"") ||
-               content.contains("#define ") ||
-               content.contains("#ifdef ") || content.contains("#ifndef ") || content.contains("#endif") ||
-               content.contains("#pragma ") ||
-               content.contains("int main(") || content.contains("void main(") ||
-               content.contains("int argc") || content.contains("char *argv") || content.contains("char **argv") ||
-               content.contains("printf(") || content.contains("fprintf(") || content.contains("sprintf(") ||
-               content.contains("scanf(") || content.contains("fscanf(") || content.contains("sscanf(") ||
-               content.contains("malloc(") || content.contains("calloc(") || content.contains("realloc(") ||
-               content.contains("free(") ||
-               content.contains("sizeof(") ||
-               content.contains("NULL") ||
-               content.contains("struct ") && content.contains("{") ||
-               content.contains("union ") && content.contains("{") ||
-               content.contains("enum ") && content.contains("{") ||
-               content.contains("typedef ") ||
-               content.contains("static ") && content.contains("(") ||
-               content.contains("extern ") ||
-               content.contains("const ") && content.contains("*") ||
-               content.contains("volatile ") ||
-               content.contains("unsigned ") || content.contains("signed ") ||
-               content.contains("short ") || content.contains("long ") ||
-               content.contains("char ") || content.contains("int ") || content.contains("float ") || content.contains("double ") ||
-               content.contains("void ") && content.contains("(") ||
-               content.contains("return ") && content.contains(";") ||
-               content.contains("if (") || content.contains("else if (") || content.contains("else {") ||
-               content.contains("for (") || content.contains("while (") || content.contains("do {") ||
-               content.contains("switch (") || content.contains("case ") && content.contains(":") ||
-               content.contains("break;") || content.contains("continue;") ||
-               content.contains("goto ") ||
-               content.contains("->") || content.contains(".*") ||
-               content.contains("&") && content.contains("*") ||
-               content.contains("fopen(") || content.contains("fclose(") || content.contains("fread(") || content.contains("fwrite(") ||
-               content.contains("memcpy(") || content.contains("memset(") || content.contains("memmove(") ||
-               content.contains("strcpy(") || content.contains("strcat(") || content.contains("strlen(") || content.contains("strcmp(") ||
-               content.contains("atoi(") || content.contains("atof(") ||
-               content.contains("exit(") || content.contains("abort(");
+    private static int calculateCScore(String content) {
+        int score = 0;
+        if (content.contains("#include <stdio.h>")) score += 10;
+        if (content.contains("#include <stdlib.h>")) score += 10;
+        if (content.contains("#include \"")) score += 5;
+        if (content.contains("int main(")) score += 5;
+        if (content.contains("void main(")) score += 5;
+        if (content.contains("printf(")) score += 5;
+        if (content.contains("scanf(")) score += 5;
+        if (content.contains("malloc(")) score += 5;
+        if (content.contains("free(")) score += 5;
+        if (content.contains("struct ")) score += 3;
+        if (content.contains("typedef struct")) score += 5;
+        if (content.contains("enum ")) score += 3;
+        if (content.contains("union ")) score += 3;
+        if (content.contains("const ")) score += 2;
+        if (content.contains("static ")) score += 2;
+        if (content.contains("volatile ")) score += 2;
+        if (content.contains("extern ")) score += 2;
+        if (content.contains("register ")) score += 2;
+        if (content.contains("auto ")) score += 2;
+        if (content.contains("unsigned ")) score += 2;
+        if (content.contains("signed ")) score += 2;
+        if (content.contains("short ")) score += 2;
+        if (content.contains("long ")) score += 2;
+        if (content.contains("char ")) score += 2;
+        if (content.contains("float ")) score += 2;
+        if (content.contains("double ")) score += 2;
+        if (content.contains("void ")) score += 2;
+        if (content.contains("sizeof(")) score += 3;
+        if (content.contains("NULL")) score += 2;
+        if (content.contains("->")) score += 3;
+        if (content.contains("FILE *")) score += 5;
+        if (content.contains("fopen(")) score += 4;
+        if (content.contains("fclose(")) score += 4;
+        if (content.contains("fprintf(")) score += 4;
+        if (content.contains("fscanf(")) score += 4;
+        if (content.contains("return 0;")) score += 3;
+        if (content.contains("/*") && content.contains("*/")) score += 2;
+        if (content.contains("//")) score += 1;
+        if (content.contains("#define ")) score += 3;
+        if (content.contains("#ifdef ")) score += 3;
+        if (content.contains("#ifndef ")) score += 3;
+        if (content.contains("#endif")) score += 3;
+        
+        return score;
     }
     
     // ===== C++ Keywords (additional to C) =====
-    private static boolean containsCppKeywords(String content) {
-        return content.contains("cout <<") || content.contains("cout<<") ||
-               content.contains("cin >>") || content.contains("cin>>") ||
-               content.contains("cerr <<") || content.contains("endl") ||
-               content.contains("std::") ||
-               content.contains("using namespace") ||
-               content.contains("class ") && content.contains("public:") ||
-               content.contains("class ") && content.contains("private:") ||
-               content.contains("class ") && content.contains("protected:") ||
-               content.contains("template<") || content.contains("template <") ||
-               content.contains("typename ") ||
-               content.contains("nullptr") ||
-               content.contains("new ") && content.contains(";") ||
-               content.contains("delete ") || content.contains("delete[] ") ||
-               content.contains("virtual ") ||
-               content.contains("override") ||
-               content.contains("final") && content.contains("class ") ||
-               content.contains("constexpr ") ||
-               content.contains("auto ") && content.contains(" = ") ||
-               content.contains("decltype(") ||
-               content.contains("noexcept") ||
-               content.contains("explicit ") ||
-               content.contains("friend ") ||
-               content.contains("mutable ") ||
-               content.contains("operator") && content.contains("(") ||
-               content.contains("dynamic_cast<") || content.contains("static_cast<") ||
-               content.contains("reinterpret_cast<") || content.contains("const_cast<") ||
-               content.contains("try {") && content.contains("catch (") ||
-               content.contains("throw ") ||
-               content.contains("namespace ") && content.contains("{") ||
-               content.contains("::") && content.contains("(") ||
-               content.contains("vector<") || content.contains("string ") ||
-               content.contains("map<") || content.contains("set<") ||
-               content.contains("list<") || content.contains("deque<") ||
-               content.contains("unique_ptr<") || content.contains("shared_ptr<") || content.contains("weak_ptr<") ||
-               content.contains("make_unique<") || content.contains("make_shared<") ||
-               content.contains("std::string") || content.contains("std::vector") ||
-               content.contains("std::cout") || content.contains("std::cin") ||
-               content.contains("std::endl") || content.contains("std::move") ||
-               content.contains("std::function") || content.contains("std::thread") ||
-               content.contains("std::mutex") || content.contains("std::lock_guard") ||
-               content.contains("std::async") || content.contains("std::future") ||
-               content.contains("std::optional") || content.contains("std::variant") ||
-               content.contains("std::any") || content.contains("std::tuple") ||
-               content.contains("std::pair") || content.contains("std::array") ||
-               content.contains("std::begin(") || content.contains("std::end(") ||
-               content.contains("std::sort(") || content.contains("std::find(") ||
-               content.contains("std::transform(") || content.contains("std::for_each(") ||
-               content.contains("std::accumulate(") ||
-               content.contains("std::chrono::") || content.contains("std::filesystem::");
+    private static int calculateCppScore(String content) {
+        int score = 0;
+        if (content.contains("cout <<") || content.contains("cout<<")) score += 5;
+        if (content.contains("cin >>") || content.contains("cin>>")) score += 5;
+        if (content.contains("cerr <<")) score += 5;
+        if (content.contains("endl")) score += 3;
+        if (content.contains("std::")) score += 5;
+        if (content.contains("using namespace")) score += 4;
+        if (content.contains("class ") && content.contains("public:")) score += 4;
+        if (content.contains("class ") && content.contains("private:")) score += 4;
+        if (content.contains("class ") && content.contains("protected:")) score += 4;
+        if (content.contains("template<") || content.contains("template <")) score += 5;
+        if (content.contains("typename ")) score += 3;
+        if (content.contains("nullptr")) score += 3;
+        if (content.contains("new ") && content.contains(";")) score += 2;
+        if (content.contains("delete ") || content.contains("delete[] ")) score += 3;
+        if (content.contains("virtual ")) score += 3;
+        if (content.contains("override")) score += 3;
+        if (content.contains("final") && content.contains("class ")) score += 3;
+        if (content.contains("constexpr ")) score += 3;
+        if (content.contains("auto ") && content.contains(" = ")) score += 2;
+        if (content.contains("decltype(")) score += 3;
+        if (content.contains("noexcept")) score += 3;
+        if (content.contains("explicit ")) score += 3;
+        if (content.contains("friend ")) score += 3;
+        if (content.contains("mutable ")) score += 3;
+        if (content.contains("operator") && content.contains("(")) score += 3;
+        if (content.contains("dynamic_cast<") || content.contains("static_cast<")) score += 4;
+        if (content.contains("reinterpret_cast<") || content.contains("const_cast<")) score += 4;
+        if (content.contains("try {") && content.contains("catch (")) score += 2;
+        if (content.contains("throw ")) score += 2;
+        if (content.contains("namespace ") && content.contains("{")) score += 3;
+        if (content.contains("::") && content.contains("(")) score += 3;
+        if (content.contains("vector<") || content.contains("string ")) score += 3;
+        if (content.contains("map<") || content.contains("set<")) score += 3;
+        if (content.contains("list<") || content.contains("deque<")) score += 3;
+        if (content.contains("unique_ptr<") || content.contains("shared_ptr<") || content.contains("weak_ptr<")) score += 4;
+        if (content.contains("make_unique<") || content.contains("make_shared<")) score += 4;
+        if (content.contains("std::string") || content.contains("std::vector")) score += 4;
+        if (content.contains("std::cout") || content.contains("std::cin")) score += 4;
+        if (content.contains("std::endl") || content.contains("std::move")) score += 4;
+        if (content.contains("std::function") || content.contains("std::thread")) score += 4;
+        if (content.contains("std::mutex") || content.contains("std::lock_guard")) score += 4;
+        if (content.contains("std::async") || content.contains("std::future")) score += 4;
+        if (content.contains("std::optional") || content.contains("std::variant")) score += 4;
+        if (content.contains("std::any") || content.contains("std::tuple")) score += 4;
+        if (content.contains("std::pair") || content.contains("std::array")) score += 4;
+        if (content.contains("std::begin(") || content.contains("std::end(")) score += 4;
+        if (content.contains("std::sort(") || content.contains("std::find(")) score += 4;
+        if (content.contains("std::transform(") || content.contains("std::for_each(")) score += 4;
+        if (content.contains("std::accumulate(")) score += 4;
+        if (content.contains("std::chrono::") || content.contains("std::filesystem::")) score += 4;
+        
+        return score;
     }
     
     // ===== C# Keywords =====
-    private static boolean containsCSharpKeywords(String content) {
-        return content.contains("using System") ||
-               content.contains("using Microsoft.") ||
-               content.contains("using UnityEngine") ||
-               content.contains("namespace ") && content.contains("{") && !content.contains("<?php") ||
-               content.contains("public class ") && content.contains(";") ||
-               content.contains("private class ") ||
-               content.contains("protected class ") ||
-               content.contains("internal class ") ||
-               content.contains("public interface ") ||
-               content.contains("public enum ") ||
-               content.contains("public struct ") ||
-               content.contains("public void ") || content.contains("private void ") ||
-               content.contains("public static void ") ||
-               content.contains("public async ") || content.contains("private async ") ||
-               content.contains("async Task") || content.contains("async void") ||
-               content.contains("await ") ||
-               content.contains("Console.Write") || content.contains("Console.Read") ||
-               content.contains("Debug.Log") ||
-               content.contains("[Attribute]") ||
-               content.contains("[Serializable]") ||
-               content.contains("[SerializeField]") ||
-               content.contains("[HttpGet]") || content.contains("[HttpPost]") ||
-               content.contains("[Route(") || content.contains("[ApiController]") ||
-               content.contains("[TestMethod]") || content.contains("[TestClass]") ||
-               content.contains("[Fact]") || content.contains("[Theory]") ||
-               content.contains("var ") && content.contains(" = new ") && content.contains(";") ||
-               content.contains("string ") && content.contains(" = ") && content.contains(";") ||
-               content.contains("int ") && content.contains(" = ") && content.contains(";") ||
-               content.contains("bool ") && content.contains(" = ") && content.contains(";") ||
-               content.contains("List<") || content.contains("Dictionary<") ||
-               content.contains("IEnumerable<") || content.contains("IList<") ||
-               content.contains("Action<") || content.contains("Func<") ||
-               content.contains("Task<") || content.contains("ValueTask<") ||
-               content.contains("get;") || content.contains("set;") ||
-               content.contains("{ get; set; }") || content.contains("{ get; }") ||
-               content.contains("=> ") && content.contains(";") ||
-               content.contains("base.") || content.contains("this.") ||
-               content.contains("virtual ") || content.contains("override ") ||
-               content.contains("abstract ") || content.contains("sealed ") ||
-               content.contains("readonly ") ||
-               content.contains("partial class ") ||
-               content.contains("static class ") ||
-               content.contains("new()") || content.contains("where T :") ||
-               content.contains("is ") && content.contains(" pattern") ||
-               content.contains("switch ") && content.contains(" => ") ||
-               content.contains("nameof(") ||
-               content.contains("typeof(") ||
-               content.contains("?.") || content.contains("??") || content.contains("?[") ||
-               content.contains("throw new ") ||
-               content.contains("try {") || content.contains("catch (") || content.contains("finally {") ||
-               content.contains("lock (") ||
-               content.contains("LINQ") || content.contains(".Where(") || content.contains(".Select(") ||
-               content.contains(".OrderBy(") || content.contains(".GroupBy(") ||
-               content.contains(".FirstOrDefault(") || content.contains(".ToList()") ||
-               content.contains("StringBuilder") || content.contains("StringComparison") ||
-               content.contains("DateTime") || content.contains("TimeSpan") ||
-               content.contains("Guid.") || content.contains("Path.") ||
-               content.contains("File.") || content.contains("Directory.") ||
-               content.contains("HttpClient") || content.contains("WebRequest") ||
-               content.contains("JsonConvert.") || content.contains("JsonSerializer.");
+    private static int calculateCSharpScore(String content) {
+        int score = 0;
+        if (content.contains("using System")) score += 5;
+        if (content.contains("using Microsoft.")) score += 5;
+        if (content.contains("using UnityEngine")) score += 5;
+        if (content.contains("namespace ") && content.contains("{") && !content.contains("<?php")) score += 3;
+        if (content.contains("public class ") && content.contains(";")) score += 3;
+        if (content.contains("private class ")) score += 3;
+        if (content.contains("protected class ")) score += 3;
+        if (content.contains("internal class ")) score += 3;
+        if (content.contains("public interface ")) score += 3;
+        if (content.contains("public enum ")) score += 3;
+        if (content.contains("public struct ")) score += 3;
+        if (content.contains("public void ")) score += 3;
+        if (content.contains("private void ")) score += 3;
+        if (content.contains("public static void ")) score += 3;
+        if (content.contains("public async ")) score += 4;
+        if (content.contains("private async ")) score += 4;
+        if (content.contains("async Task")) score += 5;
+        if (content.contains("async void")) score += 5;
+        if (content.contains("await ")) score += 3;
+        if (content.contains("Console.Write") || content.contains("Console.Read")) score += 4;
+        if (content.contains("Debug.Log")) score += 4;
+        if (content.contains("[Attribute]")) score += 4;
+        if (content.contains("[Serializable]")) score += 4;
+        if (content.contains("[SerializeField]")) score += 4;
+        if (content.contains("[HttpGet]") || content.contains("[HttpPost]")) score += 4;
+        if (content.contains("[Route(") || content.contains("[ApiController]")) score += 4;
+        if (content.contains("[TestMethod]") || content.contains("[TestClass]")) score += 4;
+        if (content.contains("[Fact]") || content.contains("[Theory]")) score += 4;
+        if (content.contains("var ") && content.contains(" = new ") && content.contains(";")) score += 3;
+        if (content.contains("string ") && content.contains(" = ") && content.contains(";")) score += 2;
+        if (content.contains("int ") && content.contains(" = ") && content.contains(";")) score += 2;
+        if (content.contains("bool ") && content.contains(" = ") && content.contains(";")) score += 2;
+        if (content.contains("List<") || content.contains("Dictionary<")) score += 3;
+        if (content.contains("IEnumerable<") || content.contains("IList<")) score += 3;
+        if (content.contains("Action<") || content.contains("Func<")) score += 3;
+        if (content.contains("Task<") || content.contains("ValueTask<")) score += 3;
+        if (content.contains("get;") || content.contains("set;")) score += 4;
+        if (content.contains("{ get; set; }") || content.contains("{ get; }")) score += 5;
+        if (content.contains("=> ") && content.contains(";")) score += 3;
+        if (content.contains("base.") || content.contains("this.")) score += 2;
+        if (content.contains("virtual ") || content.contains("override ")) score += 3;
+        if (content.contains("abstract ") || content.contains("sealed ")) score += 3;
+        if (content.contains("readonly ")) score += 3;
+        if (content.contains("partial class ")) score += 4;
+        if (content.contains("static class ")) score += 3;
+        if (content.contains("new()") || content.contains("where T :")) score += 4;
+        if (content.contains("is ") && content.contains(" pattern")) score += 3;
+        if (content.contains("switch ") && content.contains(" => ")) score += 3;
+        if (content.contains("nameof(")) score += 3;
+        if (content.contains("typeof(")) score += 2;
+        if (content.contains("?.") || content.contains("??") || content.contains("?[")) score += 3;
+        if (content.contains("throw new ")) score += 2;
+        if (content.contains("try {") || content.contains("catch (") || content.contains("finally {")) score += 2;
+        if (content.contains("lock (")) score += 3;
+        if (content.contains("LINQ") || content.contains(".Where(") || content.contains(".Select(")) score += 3;
+        if (content.contains(".OrderBy(") || content.contains(".GroupBy(")) score += 3;
+        if (content.contains(".FirstOrDefault(") || content.contains(".ToList()")) score += 3;
+        if (content.contains("StringBuilder") || content.contains("StringComparison")) score += 3;
+        if (content.contains("DateTime") || content.contains("TimeSpan")) score += 3;
+        if (content.contains("Guid.") || content.contains("Path.")) score += 3;
+        if (content.contains("File.") || content.contains("Directory.")) score += 3;
+        if (content.contains("HttpClient") || content.contains("WebRequest")) score += 3;
+        if (content.contains("JsonConvert.") || content.contains("JsonSerializer.")) score += 3;
+        
+        return score;
     }
     
     // ===== CSS Keywords =====
-    private static boolean containsCssKeywords(String content) {
-        return content.contains("{") && content.contains("}") &&
-               (content.contains("color:") || content.contains("color :") ||
-                content.contains("background:") || content.contains("background-color:") ||
-                content.contains("background-image:") || content.contains("background-size:") ||
-                content.contains("margin:") || content.contains("margin-top:") || content.contains("margin-bottom:") ||
-                content.contains("margin-left:") || content.contains("margin-right:") ||
-                content.contains("padding:") || content.contains("padding-top:") || content.contains("padding-bottom:") ||
-                content.contains("padding-left:") || content.contains("padding-right:") ||
-                content.contains("display:") || content.contains("position:") ||
-                content.contains("top:") || content.contains("bottom:") || content.contains("left:") || content.contains("right:") ||
-                content.contains("width:") || content.contains("height:") ||
-                content.contains("min-width:") || content.contains("max-width:") ||
-                content.contains("min-height:") || content.contains("max-height:") ||
-                content.contains("font-family:") || content.contains("font-size:") ||
-                content.contains("font-weight:") || content.contains("font-style:") ||
-                content.contains("text-align:") || content.contains("text-decoration:") ||
-                content.contains("line-height:") || content.contains("letter-spacing:") ||
-                content.contains("border:") || content.contains("border-radius:") ||
-                content.contains("border-top:") || content.contains("border-bottom:") ||
-                content.contains("border-left:") || content.contains("border-right:") ||
-                content.contains("border-width:") || content.contains("border-style:") || content.contains("border-color:") ||
-                content.contains("box-shadow:") || content.contains("text-shadow:") ||
-                content.contains("opacity:") || content.contains("visibility:") ||
-                content.contains("overflow:") || content.contains("overflow-x:") || content.contains("overflow-y:") ||
-                content.contains("z-index:") ||
-                content.contains("flex:") || content.contains("flex-direction:") || content.contains("flex-wrap:") ||
-                content.contains("justify-content:") || content.contains("align-items:") || content.contains("align-content:") ||
-                content.contains("grid:") || content.contains("grid-template:") ||
-                content.contains("grid-template-columns:") || content.contains("grid-template-rows:") ||
-                content.contains("gap:") || content.contains("grid-gap:") ||
-                content.contains("transform:") || content.contains("transition:") ||
-                content.contains("animation:") || content.contains("animation-name:") ||
-                content.contains("cursor:") ||
-                content.contains(":hover") || content.contains(":focus") || content.contains(":active") ||
-                content.contains(":first-child") || content.contains(":last-child") || content.contains(":nth-child") ||
-                content.contains("::before") || content.contains("::after") ||
-                content.contains("@media") || content.contains("@keyframes") ||
-                content.contains("@import") || content.contains("@font-face") ||
-                content.contains("!important") ||
-                content.contains("rgb(") || content.contains("rgba(") ||
-                content.contains("hsl(") || content.contains("hsla(") ||
-                content.contains("#") && content.matches(".*#[0-9a-fA-F]{3,8}.*") ||
-                content.contains("px") || content.contains("em") || content.contains("rem") ||
-                content.contains("vh") || content.contains("vw") || content.contains("%"));
+    private static int calculateCssScore(String content) {
+        int score = 0;
+        if (content.contains("{") && content.contains("}") && content.contains(":")) score += 2;
+        if (content.contains("body {") || content.contains("html {")) score += 5;
+        if (content.contains("div {") || content.contains("span {")) score += 3;
+        if (content.contains(".class") || content.contains("#id")) score += 2;
+        if (content.contains("@media")) score += 5;
+        if (content.contains("@import")) score += 3;
+        if (content.contains("@keyframes")) score += 5;
+        if (content.contains("@font-face")) score += 5;
+        if (content.contains("!important")) score += 4;
+        if (content.contains("px;") || content.contains("em;") || content.contains("rem;") || content.contains("%;")) score += 3;
+        if (content.contains("color:") || content.contains("background-color:")) score += 3;
+        if (content.contains("font-size:") || content.contains("font-family:")) score += 3;
+        if (content.contains("margin:") || content.contains("padding:")) score += 3;
+        if (content.contains("border:") || content.contains("border-radius:")) score += 3;
+        if (content.contains("display:") && (content.contains("block") || content.contains("flex") || content.contains("grid"))) score += 3;
+        if (content.contains("position:") && (content.contains("absolute") || content.contains("relative") || content.contains("fixed"))) score += 3;
+        if (content.contains("width:") || content.contains("height:")) score += 2;
+        if (content.contains("text-align:") || content.contains("text-decoration:")) score += 3;
+        if (content.contains("cursor:") && content.contains("pointer")) score += 3;
+        if (content.contains("z-index:")) score += 3;
+        if (content.contains("opacity:")) score += 3;
+        if (content.contains("transition:") || content.contains("transform:")) score += 3;
+        if (content.contains("box-shadow:")) score += 3;
+        if (content.contains("flex-direction:") || content.contains("justify-content:") || content.contains("align-items:")) score += 4;
+        if (content.contains("grid-template-columns:")) score += 4;
+        if (content.contains("/*") && content.contains("*/")) score += 2;
+        
+        // Negative checks - CSS shouldn't have these
+        if (content.contains("<html") || content.contains("<!DOCTYPE")) score -= 5;
+        if (content.contains("public class ") || content.contains("private void ")) score -= 10;
+        if (content.contains("function(") || content.contains("=>")) score -= 5;
+        
+        return score;
+    }
+
+    // ===== SQL Keywords =====
+    private static int calculateSqlScore(String lower) {
+        int score = 0;
+        if (lower.contains("select ") && lower.contains(" from ")) score += 5;
+        if (lower.contains("insert into ") && lower.contains(" values")) score += 5;
+        if (lower.contains("update ") && lower.contains(" set ")) score += 5;
+        if (lower.contains("delete from ")) score += 5;
+        if (lower.contains("create table ")) score += 5;
+        if (lower.contains("drop table ")) score += 5;
+        if (lower.contains("alter table ")) score += 5;
+        if (lower.contains(" where ")) score += 3;
+        if (lower.contains(" group by ")) score += 4;
+        if (lower.contains(" order by ")) score += 4;
+        if (lower.contains(" having ")) score += 4;
+        if (lower.contains(" join ") && lower.contains(" on ")) score += 4;
+        if (lower.contains("inner join") || lower.contains("left join") || lower.contains("right join")) score += 5;
+        if (lower.contains("union") || lower.contains("union all")) score += 4;
+        if (lower.contains("distinct ")) score += 3;
+        if (lower.contains("limit ")) score += 3;
+        if (lower.contains("offset ")) score += 3;
+        if (lower.contains("primary key")) score += 4;
+        if (lower.contains("foreign key")) score += 4;
+        if (lower.contains("references ")) score += 3;
+        if (lower.contains("constraint ")) score += 3;
+        if (lower.contains("index ")) score += 3;
+        if (lower.contains("view ")) score += 3;
+        if (lower.contains("trigger ")) score += 3;
+        if (lower.contains("procedure ")) score += 3;
+        if (lower.contains("declare ")) score += 3;
+        if (lower.contains("begin") && lower.contains("end")) score += 2;
+        if (lower.contains("varchar") || lower.contains("integer") || lower.contains("boolean")) score += 3;
+        if (lower.contains("timestamp") || lower.contains("datetime")) score += 3;
+        if (lower.contains("null") && !lower.contains("public")) score += 2;
+        if (lower.contains("count(") || lower.contains("sum(") || lower.contains("avg(")) score += 3;
+        if (lower.contains("max(") || lower.contains("min(")) score += 3;
+        if (lower.contains("-- ")) score += 2;
+        
+        return score;
+    }
+
+    // ===== XML Keywords =====
+    private static int calculateXmlScore(String lower) {
+        int score = 0;
+        if (lower.contains("<?xml version=")) score += 10;
+        if (lower.contains("xmlns:") || lower.contains("xmlns=")) score += 5;
+        if (lower.contains("xsi:schemalocation")) score += 5;
+        if (lower.contains("<!cdata[")) score += 5;
+        if (lower.contains("<!--") && lower.contains("-->")) score += 2;
+        if (lower.contains("</") && lower.contains(">")) score += 3;
+        if (lower.contains("/>")) score += 2;
+        if (lower.contains("=\"") && lower.contains("\"")) score += 1;
+        
+        // Common XML-based formats
+        if (lower.contains("<project") && lower.contains("</project>")) score += 3; // Maven
+        if (lower.contains("<dependency>") && lower.contains("</dependency>")) score += 3; // Maven
+        if (lower.contains("<beans") && lower.contains("</beans>")) score += 3; // Spring
+        if (lower.contains("<web-app") && lower.contains("</web-app>")) score += 3; // web.xml
+        if (lower.contains("<soap:envelope")) score += 5; // SOAP
+        if (lower.contains("<xsl:stylesheet")) score += 5; // XSLT
+        if (lower.contains("<svg") && lower.contains("</svg>")) score += 3; // SVG
+        
+        return score;
+    }
+
+    // ===== PHP Keywords =====
+    private static int calculatePhpScore(String content) {
+        int score = 0;
+        if (content.contains("<?php")) score += 10;
+        if (content.contains("<?= ")) score += 5;
+        if (content.contains("namespace ") && content.contains(";")) score += 3;
+        if (content.contains("use ") && content.contains("\\") && content.contains(";")) score += 3;
+        if (content.contains("$this->")) score += 5;
+        if (content.contains("public function ")) score += 3;
+        if (content.contains("private function ")) score += 3;
+        if (content.contains("protected function ")) score += 3;
+        if (content.contains("function ") && content.contains("(") && content.contains(")")) score += 2;
+        if (content.contains("echo ")) score += 2;
+        if (content.contains("print_r(")) score += 3;
+        if (content.contains("var_dump(")) score += 3;
+        if (content.contains("require_once")) score += 4;
+        if (content.contains("include_once")) score += 4;
+        if (content.contains("require ")) score += 3;
+        if (content.contains("include ")) score += 3;
+        if (content.contains("array(")) score += 3;
+        if (content.contains("foreach (") && content.contains(" as ")) score += 3;
+        if (content.contains("implode(")) score += 3;
+        if (content.contains("explode(")) score += 3;
+        if (content.contains("strpos(")) score += 3;
+        if (content.contains("strlen(")) score += 2;
+        if (content.contains("substr(")) score += 2;
+        if (content.contains("$_GET")) score += 4;
+        if (content.contains("$_POST")) score += 4;
+        if (content.contains("$_SESSION")) score += 4;
+        if (content.contains("$_SERVER")) score += 4;
+        if (content.contains("try {") && content.contains("catch (")) score += 2;
+        if (content.contains("throw new Exception")) score += 3;
+        if (content.contains("class ") && content.contains(" extends ")) score += 3;
+        if (content.contains("interface ")) score += 2;
+        if (content.contains("trait ")) score += 3;
+        if (content.contains("const ")) score += 2;
+        if (content.contains("static ")) score += 2;
+        if (content.contains("self::")) score += 4;
+        if (content.contains("parent::")) score += 4;
+        if (content.contains("->")) score += 2;
+        if (content.contains("::")) score += 2;
+        if (content.contains("=>")) score += 2;
+        
+        return score;
+    }
+
+    // ===== Ruby Keywords =====
+    private static int calculateRubyScore(String content) {
+        int score = 0;
+        if (content.contains("def ") && !content.contains("{") && !content.contains("):")) score += 3;
+        if (content.contains("end") && (content.contains("def ") || content.contains("if ") || content.contains("do"))) score += 3;
+        if (content.contains("class ") && content.contains("<")) score += 3;
+        if (content.contains("module ")) score += 3;
+        if (content.contains("require ")) score += 2;
+        if (content.contains("require_relative ")) score += 4;
+        if (content.contains("include ")) score += 2;
+        if (content.contains("attr_accessor")) score += 5;
+        if (content.contains("attr_reader")) score += 5;
+        if (content.contains("attr_writer")) score += 5;
+        if (content.contains("initialize")) score += 4;
+        if (content.contains("puts ")) score += 3;
+        if (content.contains("p ")) score += 2;
+        if (content.contains("raise ")) score += 2;
+        if (content.contains("yield")) score += 3;
+        if (content.contains("unless ")) score += 4;
+        if (content.contains("elsif ")) score += 4;
+        if (content.contains("when ")) score += 2;
+        if (content.contains("case ")) score += 2;
+        if (content.contains("begin") && content.contains("rescue")) score += 4;
+        if (content.contains("ensure")) score += 3;
+        if (content.contains("nil")) score += 2;
+        if (content.contains("true") || content.contains("false")) score += 1;
+        if (content.contains("self.")) score += 2;
+        if (content.contains("@")) score += 2;
+        if (content.contains("@@")) score += 3;
+        if (content.contains("=>")) score += 2;
+        if (content.contains("do |")) score += 4;
+        if (content.contains(".each do")) score += 4;
+        if (content.contains(".map do")) score += 4;
+        if (content.contains("lambda")) score += 2;
+        if (content.contains("Proc.new")) score += 4;
+        if (content.contains("gem ")) score += 3;
+        
+        return score;
+    }
+
+    // ===== Rust Keywords =====
+    private static int calculateRustScore(String content) {
+        int score = 0;
+        if (content.contains("fn ") && content.contains("{")) score += 4;
+        if (content.contains("fn main()")) score += 5;
+        if (content.contains("let mut ")) score += 5;
+        if (content.contains("let ")) score += 2;
+        if (content.contains("pub fn ")) score += 4;
+        if (content.contains("pub struct ")) score += 4;
+        if (content.contains("pub enum ")) score += 4;
+        if (content.contains("pub mod ")) score += 4;
+        if (content.contains("pub use ")) score += 4;
+        if (content.contains("pub trait ")) score += 4;
+        if (content.contains("impl ")) score += 4;
+        if (content.contains("struct ") && content.contains("{")) score += 3;
+        if (content.contains("enum ") && content.contains("{")) score += 3;
+        if (content.contains("mod ")) score += 3;
+        if (content.contains("use std::")) score += 5;
+        if (content.contains("crate::")) score += 4;
+        if (content.contains("super::")) score += 4;
+        if (content.contains("self::")) score += 4;
+        if (content.contains("match ")) score += 3;
+        if (content.contains("=>")) score += 2;
+        if (content.contains("println!")) score += 5;
+        if (content.contains("format!")) score += 5;
+        if (content.contains("vec!")) score += 5;
+        if (content.contains("panic!")) score += 5;
+        if (content.contains("Ok(") || content.contains("Err(")) score += 3;
+        if (content.contains("Option<") || content.contains("Result<")) score += 4;
+        if (content.contains("Some(") || content.contains("None")) score += 3;
+        if (content.contains("String::from")) score += 4;
+        if (content.contains("&str")) score += 4;
+        if (content.contains("&mut ")) score += 4;
+        if (content.contains("unsafe {")) score += 4;
+        if (content.contains("loop {")) score += 3;
+        if (content.contains("while let ")) score += 4;
+        if (content.contains("if let ")) score += 4;
+        if (content.contains("for ") && content.contains(" in ")) score += 3;
+        if (content.contains("as ")) score += 2;
+        if (content.contains("where ")) score += 3;
+        if (content.contains("#[derive(")) score += 5;
+        if (content.contains("#[cfg(")) score += 5;
+        if (content.contains("#[test]")) score += 5;
+        if (content.contains("->")) score += 2;
+        if (content.contains("::")) score += 2;
+        
+        return score;
     }
     
-    // ===== SQL Keywords =====
-    private static boolean containsSqlKeywords(String lower) {
-        return lower.contains("select ") && lower.contains(" from ") ||
-               lower.contains("select *") ||
-               lower.contains("insert into ") ||
-               lower.contains("update ") && lower.contains(" set ") ||
-               lower.contains("delete from ") ||
-               lower.contains("create table ") ||
-               lower.contains("create index ") ||
-               lower.contains("create view ") ||
-               lower.contains("create procedure ") ||
-               lower.contains("create function ") ||
-               lower.contains("create trigger ") ||
-               lower.contains("create database ") ||
-               lower.contains("create schema ") ||
-               lower.contains("alter table ") ||
-               lower.contains("alter column ") ||
-               lower.contains("drop table ") ||
-               lower.contains("drop index ") ||
-               lower.contains("drop view ") ||
-               lower.contains("drop database ") ||
-               lower.contains("truncate table ") ||
-               lower.contains("where ") ||
-               lower.contains(" and ") && (lower.contains("where") || lower.contains("on ")) ||
-               lower.contains(" or ") && lower.contains("where") ||
-               lower.contains(" not ") && lower.contains("where") ||
-               lower.contains(" in (") || lower.contains(" not in (") ||
-               lower.contains(" between ") ||
-               lower.contains(" like ") ||
-               lower.contains(" is null") || lower.contains(" is not null") ||
-               lower.contains("order by ") ||
-               lower.contains("group by ") ||
-               lower.contains("having ") ||
-               lower.contains(" asc") || lower.contains(" desc") ||
-               lower.contains("inner join ") ||
-               lower.contains("left join ") || lower.contains("left outer join ") ||
-               lower.contains("right join ") || lower.contains("right outer join ") ||
-               lower.contains("full join ") || lower.contains("full outer join ") ||
-               lower.contains("cross join ") ||
-               lower.contains(" on ") && lower.contains(" = ") ||
-               lower.contains("union ") || lower.contains("union all ") ||
-               lower.contains("intersect ") || lower.contains("except ") ||
-               lower.contains("distinct ") ||
-               lower.contains("limit ") || lower.contains("offset ") ||
-               lower.contains("top ") ||
-               lower.contains("count(") || lower.contains("sum(") || lower.contains("avg(") ||
-               lower.contains("min(") || lower.contains("max(") ||
-               lower.contains("coalesce(") || lower.contains("nullif(") ||
-               lower.contains("case when ") || lower.contains(" then ") || lower.contains(" else ") || lower.contains(" end") ||
-               lower.contains("cast(") || lower.contains("convert(") ||
-               lower.contains("varchar") || lower.contains("nvarchar") ||
-               lower.contains("integer") || lower.contains("bigint") || lower.contains("smallint") ||
-               lower.contains("decimal") || lower.contains("numeric") ||
-               lower.contains("datetime") || lower.contains("timestamp") ||
-               lower.contains("primary key") || lower.contains("foreign key") ||
-               lower.contains("references ") ||
-               lower.contains("unique") || lower.contains("not null") ||
-               lower.contains("default ") ||
-               lower.contains("auto_increment") || lower.contains("identity") ||
-               lower.contains("constraint ") ||
-               lower.contains("begin ") || lower.contains("commit") || lower.contains("rollback") ||
-               lower.contains("transaction") ||
-               lower.contains("exec ") || lower.contains("execute ") ||
-               lower.contains("declare ") || lower.contains("@") && lower.contains(" = ") ||
-               lower.contains("cursor ") ||
-               lower.contains("fetch ") ||
-               lower.contains("open ") && lower.contains("cursor") ||
-               lower.contains("close ") && lower.contains("cursor");
+    // ===== Bash/Shell Keywords =====
+    private static int calculateBashScore(String content) {
+        int score = 0;
+        if (content.contains("#!/bin/bash") || content.contains("#!/bin/sh")) score += 10;
+        if (content.contains("echo ")) score += 2;
+        if (content.contains("if [") || content.contains("if [[")) score += 4;
+        if (content.contains("fi") && content.contains("if")) score += 4;
+        if (content.contains("then")) score += 2;
+        if (content.contains("else")) score += 2;
+        if (content.contains("elif")) score += 3;
+        if (content.contains("case ") && content.contains(" in")) score += 3;
+        if (content.contains("esac")) score += 4;
+        if (content.contains("for ") && content.contains(" in ")) score += 3;
+        if (content.contains("done") && (content.contains("for") || content.contains("while"))) score += 3;
+        if (content.contains("while [") || content.contains("while [[")) score += 4;
+        if (content.contains("function ")) score += 3;
+        if (content.contains("local ")) score += 3;
+        if (content.contains("export ")) score += 3;
+        if (content.contains("source ")) score += 3;
+        if (content.contains("alias ")) score += 3;
+        if (content.contains("grep ")) score += 3;
+        if (content.contains("awk ")) score += 3;
+        if (content.contains("sed ")) score += 3;
+        if (content.contains("cat ")) score += 2;
+        if (content.contains("ls ")) score += 2;
+        if (content.contains("cd ")) score += 2;
+        if (content.contains("pwd")) score += 2;
+        if (content.contains("mkdir ")) score += 2;
+        if (content.contains("rm ")) score += 2;
+        if (content.contains("cp ")) score += 2;
+        if (content.contains("mv ")) score += 2;
+        if (content.contains("chmod ")) score += 3;
+        if (content.contains("chown ")) score += 3;
+        if (content.contains("sudo ")) score += 3;
+        if (content.contains("apt-get") || content.contains("yum ") || content.contains("dnf ") || content.contains("brew ")) score += 4;
+        if (content.contains("git ")) score += 3;
+        if (content.contains("docker ")) score += 3;
+        if (content.contains("kubectl ")) score += 3;
+        if (content.contains("$")) score += 1;
+        if (content.contains("${")) score += 2;
+        if (content.contains("2>&1")) score += 4;
+        if (content.contains("/dev/null")) score += 4;
+        if (content.contains(" | ")) score += 2;
+        if (content.contains(" > ")) score += 2;
+        if (content.contains(" >> ")) score += 2;
+        
+        return score;
+    }
+
+    // ===== PowerShell Keywords =====
+    private static int calculatePowerShellScore(String content) {
+        int score = 0;
+        if (content.contains("Write-Host")) score += 5;
+        if (content.contains("Write-Output")) score += 5;
+        if (content.contains("Get-")) score += 4;
+        if (content.contains("Set-")) score += 4;
+        if (content.contains("New-")) score += 4;
+        if (content.contains("Remove-")) score += 4;
+        if (content.contains("Select-Object")) score += 5;
+        if (content.contains("Where-Object")) score += 5;
+        if (content.contains("ForEach-Object")) score += 5;
+        if (content.contains("Sort-Object")) score += 5;
+        if (content.contains("Format-Table")) score += 5;
+        if (content.contains("Format-List")) score += 5;
+        if (content.contains("Invoke-")) score += 4;
+        if (content.contains("Test-Path")) score += 5;
+        if (content.contains("ConvertFrom-Json")) score += 5;
+        if (content.contains("ConvertTo-Json")) score += 5;
+        if (content.contains("$")) score += 1;
+        if (content.contains("$_.")) score += 4;
+        if (content.contains("@(")) score += 3;
+        if (content.contains("@{")) score += 3;
+        if (content.contains("-eq ")) score += 4;
+        if (content.contains("-ne ")) score += 4;
+        if (content.contains("-gt ")) score += 4;
+        if (content.contains("-lt ")) score += 4;
+        if (content.contains("-ge ")) score += 4;
+        if (content.contains("-le ")) score += 4;
+        if (content.contains("-and ")) score += 4;
+        if (content.contains("-or ")) score += 4;
+        if (content.contains("-not ")) score += 4;
+        if (content.contains("-like ")) score += 4;
+        if (content.contains("-match ")) score += 4;
+        if (content.contains("function ") && content.contains("{")) score += 2;
+        if (content.contains("param(")) score += 4;
+        if (content.contains("try {") && content.contains("catch {")) score += 3;
+        if (content.contains("throw ")) score += 2;
+        if (content.contains("if (") && content.contains(")")) score += 2;
+        if (content.contains("elseif (")) score += 3;
+        if (content.contains("else {")) score += 2;
+        if (content.contains("foreach (")) score += 3;
+        if (content.contains("while (")) score += 2;
+        if (content.contains("switch (")) score += 2;
+        if (content.contains("[string]") || content.contains("[int]") || content.contains("[bool]")) score += 4;
+        if (content.contains("[CmdletBinding()]")) score += 5;
+        if (content.contains("[Parameter(")) score += 5;
+        
+        return score;
+    }
+
+    // ===== YAML Keywords =====
+    private static int calculateYamlScore(String content) {
+        int score = 0;
+        if (content.contains(":")) score += 1;
+        if (content.contains("- ")) score += 1;
+        
+        // YAML structure checks
+        if (content.matches("(?m)^[a-zA-Z0-9_-]+:\\s*$")) score += 3; // key:
+        if (content.matches("(?m)^\\s+-[ ]+.*$")) score += 3; // - list item
+        if (content.matches("(?m)^\\s+[a-zA-Z0-9_-]+:\\s+.*$")) score += 3; // indented key: value
+        
+        // Common YAML keys (Kubernetes, CI/CD, etc.)
+        if (content.contains("apiVersion:")) score += 5;
+        if (content.contains("kind:")) score += 5;
+        if (content.contains("metadata:")) score += 5;
+        if (content.contains("spec:")) score += 5;
+        if (content.contains("containers:")) score += 5;
+        if (content.contains("image:")) score += 3;
+        if (content.contains("ports:")) score += 3;
+        if (content.contains("env:")) score += 3;
+        if (content.contains("volumes:")) score += 3;
+        if (content.contains("resources:")) score += 3;
+        if (content.contains("version:")) score += 3;
+        if (content.contains("services:")) score += 3;
+        if (content.contains("steps:")) score += 3;
+        if (content.contains("jobs:")) score += 3;
+        if (content.contains("stages:")) score += 3;
+        if (content.contains("variables:")) score += 3;
+        if (content.contains("script:")) score += 3;
+        if (content.contains("before_script:")) score += 4;
+        if (content.contains("after_script:")) score += 4;
+        if (content.contains("include:")) score += 3;
+        if (content.contains("extends:")) score += 3;
+        if (content.contains("true") || content.contains("false")) score += 1;
+        if (content.contains("yes") || content.contains("no")) score += 1;
+        if (content.contains("on:")) score += 2; // GitHub Actions
+        if (content.contains("runs-on:")) score += 4; // GitHub Actions
+        
+        return score;
+    }
+
+    // ===== JSON Keywords =====
+    private static int calculateJsonScore(String content) {
+        int score = 0;
+        String trimmed = content.trim();
+        
+        // JSON must start with { or [ and end with } or ]
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || 
+            (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+            score += 5;
+        }
+        
+        if (content.contains("\"") && content.contains(":")) score += 2;
+        if (content.contains(":") && (content.contains("{") || content.contains("["))) score += 2;
+        if (content.contains("},")) score += 3;
+        if (content.contains("],")) score += 3;
+        if (content.contains("\": \"")) score += 3;
+        if (content.contains("\": ")) score += 2;
+        if (content.contains("true") || content.contains("false")) score += 1;
+        if (content.contains("null")) score += 1;
+        
+        // Negative checks - JSON shouldn't have these
+        if (content.contains(";") || content.contains("=") || content.contains("(") || content.contains(")")) score -= 5;
+        if (content.contains("<") || content.contains(">")) score -= 5;
+        if (content.contains("function")) score -= 10;
+        if (content.contains("class ")) score -= 10;
+        if (content.contains("import ")) score -= 10;
+        if (content.contains("var ") || content.contains("let ") || content.contains("const ")) score -= 10;
+        
+        return score;
     }
 
     /**

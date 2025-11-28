@@ -467,6 +467,37 @@
     -fx-font-weight: bold;
 }
 
+/* Status Bar Buttons */
+.status-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #565f89;
+    -fx-font-size: 14px;
+    -fx-padding: 0 5px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 3px;
+}
+
+.status-button:hover {
+    -fx-text-fill: #c0caf5;
+    -fx-background-color: rgba(255,255,255,0.05);
+}
+
+.status-button-update {
+    -fx-background-color: #f7768e;
+    -fx-text-fill: #1a1b26;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 6px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 10px;
+}
+
+.status-button-update:hover {
+    -fx-background-color: #ff9e64;
+}
+
 /* Notifications */
 .notification-popup {
     -fx-background-color: #16161e;
@@ -553,4 +584,99 @@
 .line-numbers .content {
     -fx-background-color: transparent;
     -fx-alignment: TOP-RIGHT;
+}
+
+/* Task Detail View */
+.task-detail-view {
+    -fx-background-color: #1a1b26;
+    -fx-padding: 20px;
+}
+
+.task-detail-header {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #c0caf5;
+    -fx-padding: 0 0 10px 0;
+    -fx-border-color: #292e42;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.task-detail-label {
+    -fx-text-fill: #a9b1d6;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.task-detail-combo-box {
+    -fx-background-color: #16161e;
+    -fx-border-color: #414868;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+}
+
+.task-detail-combo-box .list-cell {
+    -fx-text-fill: #c0caf5;
+}
+
+.task-detail-date-picker {
+    -fx-background-color: #16161e;
+    -fx-border-color: #414868;
+    -fx-border-radius: 4px;
+}
+
+.task-detail-date-picker .text-field {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c0caf5;
+}
+
+.task-detail-text-field {
+    -fx-background-color: #16161e;
+    -fx-text-fill: #c0caf5;
+    -fx-border-color: #414868;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-padding: 6px 10px;
+}
+
+.task-detail-text-area {
+    -fx-background-color: #16161e;
+    -fx-text-fill: #c0caf5;
+    -fx-border-color: #414868;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-control-inner-background: #16161e;
+}
+
+/* Notification History Panel */
+.notification-history-panel {
+    -fx-background-color: #1a1b26;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 15, 0, 0, 5);
+    -fx-background-radius: 6px;
+    -fx-border-color: #292e42;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+}
+
+.notification-history-item {
+    -fx-background-color: #16161e;
+    -fx-background-radius: 4px;
+    -fx-border-color: #292e42;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+}
+
+.small-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #565f89;
+    -fx-font-size: 10px;
+    -fx-padding: 2px 5px;
+    -fx-border-color: #292e42;
+    -fx-border-radius: 3px;
+    -fx-cursor: hand;
+}
+
+.small-button:hover {
+    -fx-background-color: #292e42;
+    -fx-text-fill: #c0caf5;
+    -fx-border-color: #7aa2f7;
 }

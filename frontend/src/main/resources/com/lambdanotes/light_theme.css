@@ -489,6 +489,37 @@
     -fx-font-weight: bold;
 }
 
+/* Status Bar Buttons */
+.status-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #586069;
+    -fx-font-size: 14px;
+    -fx-padding: 0 5px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 3px;
+}
+
+.status-button:hover {
+    -fx-text-fill: #24292e;
+    -fx-background-color: rgba(0,0,0,0.05);
+}
+
+.status-button-update {
+    -fx-background-color: #d73a49;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 6px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 10px;
+}
+
+.status-button-update:hover {
+    -fx-background-color: #cb2431;
+}
+
 /* Notifications */
 .notification-popup {
     -fx-background-color: #ffffff;
@@ -575,4 +606,67 @@
 .line-numbers .content {
     -fx-background-color: transparent;
     -fx-alignment: TOP-RIGHT;
+}
+
+/* Projects View */
+.projects-view {
+    -fx-background-color: #ffffff;
+}
+
+.projects-view .list-view {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}
+
+.projects-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #24292e;
+    -fx-padding: 8px 12px;
+    -fx-font-size: 14px;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.projects-view .list-cell:filled:selected, .projects-view .list-cell:filled:hover {
+    -fx-background-color: #f1f8ff;
+    -fx-text-fill: #24292e;
+}
+
+/* Task Detail View */
+.task-detail-view {
+    -fx-background-color: #ffffff;
+}
+
+/* Notification History Panel */
+.notification-history-panel {
+    -fx-background-color: #ffffff;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0, 0, 5);
+    -fx-background-radius: 6px;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+}
+
+.notification-history-item {
+    -fx-background-color: #f6f8fa;
+    -fx-background-radius: 4px;
+    -fx-border-color: #e1e4e8;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+}
+
+.small-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #586069;
+    -fx-font-size: 10px;
+    -fx-padding: 2px 5px;
+    -fx-border-color: #d1d5da;
+    -fx-border-radius: 3px;
+    -fx-cursor: hand;
+}
+
+.small-button:hover {
+    -fx-background-color: #f1f8ff;
+    -fx-text-fill: #0366d6;
+    -fx-border-color: #0366d6;
 }
