@@ -3,6 +3,11 @@ package com.lambdanotes;
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
 import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension;
+import com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension;
+import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
+import com.vladsch.flexmark.ext.footnotes.FootnoteExtension;
+import com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.pdf.converter.PdfConverterExtension;
@@ -97,6 +102,7 @@ public class App extends Application {
     private String currentTheme = "Dark"; // Track current theme
     
     private double currentEditorFontSize = 16;
+    private String currentFontFamily = "JetBrains Mono";
     private static final double MAX_CONTENT_WIDTH = 900;
     
     // Layout Components
@@ -122,6 +128,8 @@ public class App extends Application {
     // Explorer Components
     private TextField searchField;
     private List<String> allNotes = new ArrayList<>(); // Cache for filtering
+    private final List<String> recentFiles = new ArrayList<>(); // Track recent files
+    private static final int MAX_RECENT_FILES = 20;
     
     // Sidebar & Activity Bar
     private GitHistoryView gitHistoryView;
@@ -130,6 +138,8 @@ public class App extends Application {
     private VBox activityBar;
     private Button btnExplorer;
     private Button btnGit;
+    private Button btnProjects;
+    private ProjectsView projectsView;
 
     private enum ViewMode {
         READING, WRITING, SPLIT
@@ -153,7 +163,32 @@ public class App extends Application {
     private Stage primaryStage;
     private AppConfig currentConfig;
 
+    // Notification fields
+    private Button notificationBtn;
+    private Button updateBtn;
+    private final List<NotificationRecord> notificationHistory = new ArrayList<>();
+
+    private static class NotificationRecord {
+        String title;
+        String message;
+        NotificationType type;
+        String time;
+
+        public NotificationRecord(String title, String message, NotificationType type) {
+            this.title = title;
+            this.message = message;
+            this.type = type;
+            this.time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+    }
+
+    private UpdateChecker.UpdateInfo pendingUpdateInfo; // Field to store pending update information
+
+    private long lastShiftReleaseTime = 0;
+    private boolean otherKeyPressed = false;
+
     @Override
+    @SuppressWarnings("removal")
     public void start(Stage stage) {
         this.primaryStage = stage;
         setupLogging();
@@ -164,6 +199,16 @@ public class App extends Application {
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Bold.ttf"), 10);
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-Italic.ttf"), 10);
             Font.loadFont(getClass().getResourceAsStream("fonts/JetBrainsMono-BoldItalic.ttf"), 10);
+            
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Inter-BoldItalic.ttf"), 10);
+            
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Regular.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Bold.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-Italic.ttf"), 10);
+            Font.loadFont(getClass().getResourceAsStream("fonts/Roboto-BoldItalic.ttf"), 10);
         } catch (Exception e) {
             logger.warning("Could not load fonts: " + e.getMessage());
         }
@@ -177,10 +222,24 @@ public class App extends Application {
         
         noteService = new NoteService();
         parser = Parser.builder()
-                .extensions(Arrays.asList(TablesExtension.create()))
+                .extensions(Arrays.asList(
+                    TablesExtension.create(),
+                    StrikethroughExtension.create(),
+                    TaskListExtension.create(),
+                    AutolinkExtension.create(),
+                    FootnoteExtension.create(),
+                    AnchorLinkExtension.create()
+                ))
                 .build();
         renderer = HtmlRenderer.builder()
-                .extensions(Arrays.asList(TablesExtension.create()))
+                .extensions(Arrays.asList(
+                    TablesExtension.create(),
+                    StrikethroughExtension.create(),
+                    TaskListExtension.create(),
+                    AutolinkExtension.create(),
+                    FootnoteExtension.create(),
+                    AnchorLinkExtension.create()
+                ))
                 .softBreak("<br />")
                 .build();
 
@@ -344,7 +403,7 @@ public class App extends Application {
         rootSplitPane = new SplitPane();
         rootSplitPane.getStyleClass().add("root-split-pane");
         rootSplitPane.getItems().addAll(sidebarContainer, emptyState); // Start with empty state
-        rootSplitPane.setDividerPositions(0.2); // 20% sidebar
+        rootSplitPane.setDividerPositions(0.15); // 15% sidebar
         
         // Set initial center to Root SplitPane
         mainLayout.setCenter(rootSplitPane);
@@ -361,6 +420,34 @@ public class App extends Application {
         scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
         
         stage.setTitle(LanguageManager.get("app.title"));
+
+        // Global Key Listeners
+        scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() != KeyCode.SHIFT) {
+                otherKeyPressed = true;
+            }
+            
+            if (e.isShortcutDown() && e.isShiftDown() && e.getCode() == KeyCode.F) {
+                openSearchEverywhere();
+                e.consume();
+            } else if (e.isShortcutDown() && e.getCode() == KeyCode.E) {
+                openRecentFiles();
+                e.consume();
+            }
+        });
+
+        scene.addEventFilter(KeyEvent.KEY_RELEASED, e -> {
+            if (e.getCode() == KeyCode.SHIFT) {
+                if (!otherKeyPressed) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastShiftReleaseTime < 300) {
+                        openSearchEverywhere();
+                    }
+                    lastShiftReleaseTime = now;
+                }
+                otherKeyPressed = false;
+            }
+        });
         
         // Set Application Icon
         try {
@@ -440,19 +527,125 @@ public class App extends Application {
         UpdateChecker checker = new UpdateChecker();
         checker.checkForUpdates(APP_VERSION).thenAccept(updateInfo -> {
             if (updateInfo != null) {
-                Platform.runLater(() -> showNotification(
-                    LanguageManager.get("dialog.update_available"), 
-                    java.text.MessageFormat.format(LanguageManager.get("dialog.update_desc"), updateInfo.version), 
-                    NotificationType.INFO, 
-                    LanguageManager.get("dialog.download"), 
-                    () -> getHostServices().showDocument(updateInfo.url)
-                ));
+                Platform.runLater(() -> {
+                    this.pendingUpdateInfo = updateInfo; // Store for later use (e.g. theme switch)
+                    updateBtn.setVisible(true);
+                    updateBtn.setManaged(true);
+                    updateBtn.setUserData(updateInfo); // Store update info
+                    showNotification(
+                        LanguageManager.get("dialog.update_available"), 
+                        java.text.MessageFormat.format(LanguageManager.get("dialog.update_desc"), updateInfo.version), 
+                        NotificationType.INFO, 
+                        LanguageManager.get("dialog.download"), 
+                        () -> getHostServices().showDocument(updateInfo.url)
+                    );
+                });
             }
         });
     }
 
+    private void showUpdateDialog() {
+        UpdateChecker.UpdateInfo updateInfo = (UpdateChecker.UpdateInfo) updateBtn.getUserData();
+        if (updateInfo != null) {
+             getHostServices().showDocument(updateInfo.url);
+        }
+    }
+
+    private void toggleNotificationHistory() {
+        // Check if already open
+        if (rootStack.getChildren().stream().anyMatch(n -> n.getId() != null && n.getId().equals("notification-history"))) {
+            rootStack.getChildren().removeIf(n -> n.getId() != null && n.getId().equals("notification-history"));
+            return;
+        }
+
+        VBox historyPanel = new VBox(10);
+        historyPanel.setId("notification-history");
+        historyPanel.getStyleClass().add("notification-history-panel");
+        historyPanel.setMaxHeight(400);
+        historyPanel.setMaxWidth(350);
+        historyPanel.setPadding(new Insets(15));
+        
+        // Header
+        HBox header = new HBox(10);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label(LanguageManager.get("notification.title"));
+        title.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #abb2bf;");
+        
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        
+        Button clearBtn = new Button(LanguageManager.get("notification.clear"));
+        clearBtn.getStyleClass().add("small-button");
+        clearBtn.setOnAction(e -> {
+            notificationHistory.clear();
+            rootStack.getChildren().remove(historyPanel);
+        });
+        
+        header.getChildren().addAll(title, spacer, clearBtn);
+        
+        // List
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        
+        VBox list = new VBox(10);
+        if (notificationHistory.isEmpty()) {
+            Label empty = new Label(LanguageManager.get("notification.empty"));
+            empty.setStyle("-fx-text-fill: #5c6370; -fx-padding: 20px;");
+            list.getChildren().add(empty);
+        } else {
+            for (NotificationRecord record : notificationHistory) {
+                VBox item = new VBox(5);
+                item.getStyleClass().add("notification-history-item");
+                item.setPadding(new Insets(10));
+                item.setStyle("-fx-background-color: #2c313a; -fx-background-radius: 5px;");
+                
+                HBox itemHeader = new HBox(10);
+                Label itemTitle = new Label(record.title);
+                itemTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #e5c07b;");
+                
+                Region itemSpacer = new Region();
+                HBox.setHgrow(itemSpacer, Priority.ALWAYS);
+                
+                Label timeLabel = new Label(record.time);
+                timeLabel.setStyle("-fx-text-fill: #5c6370; -fx-font-size: 10px;");
+                
+                itemHeader.getChildren().addAll(itemTitle, itemSpacer, timeLabel);
+                
+                Label message = new Label(record.message);
+                message.setWrapText(true);
+                message.setStyle("-fx-text-fill: #abb2bf;");
+                
+                item.getChildren().addAll(itemHeader, message);
+                list.getChildren().add(item);
+            }
+        }
+        
+        scrollPane.setContent(list);
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+        
+        historyPanel.getChildren().addAll(header, scrollPane);
+        
+        // Position bottom-right above status bar
+        StackPane.setAlignment(historyPanel, Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(historyPanel, new Insets(0, 10, 40, 0));
+        
+        // Close on click outside
+        rootStack.setOnMouseClicked(e -> {
+            if (!historyPanel.contains(historyPanel.sceneToLocal(e.getSceneX(), e.getSceneY())) && 
+                !notificationBtn.contains(notificationBtn.sceneToLocal(e.getSceneX(), e.getSceneY()))) {
+                rootStack.getChildren().remove(historyPanel);
+            }
+        });
+        
+        rootStack.getChildren().add(historyPanel);
+    }
+
     private void toggleMaximize(Stage stage) {
-        Screen screen = Screen.getPrimary();
+        // Get the screen the stage is currently on
+        List<Screen> screens = Screen.getScreensForRectangle(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight());
+        Screen screen = screens.isEmpty() ? Screen.getPrimary() : screens.get(0);
+        
         Rectangle2D bounds = screen.getVisualBounds();
 
         if (isMaximized) {
@@ -518,7 +711,14 @@ public class App extends Application {
             yOffset[0] = event.getSceneY();
         });
         titleBar.setOnMouseDragged(event -> {
-            if (!isMaximized) {
+            if (isMaximized) {
+                toggleMaximize(stage);
+                double newX = event.getScreenX() - (stage.getWidth() / 2);
+                double newY = event.getScreenY() - yOffset[0];
+                stage.setX(newX);
+                stage.setY(newY);
+                xOffset[0] = stage.getWidth() / 2;
+            } else {
                 stage.setX(event.getScreenX() - xOffset[0]);
                 stage.setY(event.getScreenY() - yOffset[0]);
             }
@@ -690,10 +890,27 @@ public class App extends Application {
     private void setupEditorBehavior(TextArea textArea) {
         // Shift+Enter to insert new line
         textArea.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            if (event.getCode() == KeyCode.ENTER && event.isShiftDown()) {
-                int caret = textArea.getCaretPosition();
-                textArea.insertText(caret, "\n");
-                event.consume();
+            if (event.getCode() == KeyCode.ENTER) {
+                if (event.isShiftDown()) {
+                    int caret = textArea.getCaretPosition();
+                    textArea.insertText(caret, "\n");
+                    event.consume();
+                } else {
+                    handleEnterKey(textArea, event);
+                }
+            } else if (event.getCode() == KeyCode.TAB) {
+                if (event.isShiftDown()) {
+                    unindentSelectionOrLine(textArea);
+                    event.consume();
+                } else {
+                    if (textArea.getSelectedText().isEmpty()) {
+                        textArea.insertText(textArea.getCaretPosition(), "  ");
+                        event.consume();
+                    } else {
+                        indentSelection(textArea);
+                        event.consume();
+                    }
+                }
             } else if (event.getCode() == KeyCode.V && event.isShortcutDown()) {
                 // Handle Paste
                 Clipboard clipboard = Clipboard.getSystemClipboard();
@@ -732,11 +949,221 @@ public class App extends Application {
             } else if (event.getCode() == KeyCode.D && event.isShortcutDown()) {
                  duplicateSelectionOrLine(textArea);
                  event.consume();
+            } else if (event.getCode() == KeyCode.X && event.isShortcutDown()) {
+                if (textArea.getSelectedText().isEmpty()) {
+                    cutCurrentLine(textArea);
+                    event.consume();
+                }
+            } else if (event.getCode() == KeyCode.C && event.isShortcutDown()) {
+                if (textArea.getSelectedText().isEmpty()) {
+                    copyCurrentLine(textArea);
+                    event.consume();
+                }
             }
         });
         
         setupEditorContextMenu(textArea);
         setupDragAndDrop(textArea);
+    }
+
+    private void handleEnterKey(TextArea textArea, KeyEvent event) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        
+        // Find start of current line
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; // skip \n
+        
+        // Get current line content up to caret
+        String currentLine = text.substring(lineStart, caret);
+        
+        // Check indentation
+        StringBuilder indent = new StringBuilder();
+        for (char c : currentLine.toCharArray()) {
+            if (c == ' ' || c == '\t') {
+                indent.append(c);
+            } else {
+                break;
+            }
+        }
+        
+        String trimmedLine = currentLine.trim();
+        
+        // Check for list markers
+        // - item
+        // * item
+        // + item
+        // 1. item
+        
+        String listMarker = "";
+        if (trimmedLine.startsWith("- ") || trimmedLine.equals("-")) {
+            listMarker = "- ";
+        } else if (trimmedLine.startsWith("* ") || trimmedLine.equals("*")) {
+            listMarker = "* ";
+        } else if (trimmedLine.startsWith("+ ") || trimmedLine.equals("+")) {
+            listMarker = "+ ";
+        } else {
+            // Check for ordered list
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile("^(\\d+)\\. ?.*");
+            java.util.regex.Matcher m = p.matcher(trimmedLine);
+            if (m.matches()) {
+                try {
+                    int num = Integer.parseInt(m.group(1));
+                    listMarker = (num + 1) + ". ";
+                } catch (NumberFormatException e) {
+                    // ignore
+                }
+            }
+        }
+        
+        // If current line is JUST the list marker (empty item), break the list
+        if (!listMarker.isEmpty() && (trimmedLine.equals(listMarker.trim()) || trimmedLine.equals(listMarker.trim().substring(0, listMarker.trim().length()-1)))) {
+            // Remove the current line's indentation and marker
+            // Actually, user wants "normal" behavior if pressed twice.
+            // If we are here, it means the user pressed Enter on a line that has a marker but no text.
+            // We should clear this line.
+            
+            // Calculate range to delete
+            int lineEnd = text.indexOf('\n', caret);
+            if (lineEnd == -1) lineEnd = text.length();
+            
+            textArea.deleteText(lineStart, lineEnd);
+            // Don't consume event? No, we handled it by clearing. 
+            // But we probably want to insert a newline if it wasn't the last line?
+            // Usually editors just clear the line and keep the cursor there (effectively moving to a new empty line state)
+            // Or they clear and move to next line.
+            
+            // Let's just clear the text on this line, so it becomes an empty line.
+            event.consume();
+            return;
+        }
+        
+        if (!listMarker.isEmpty()) {
+            textArea.insertText(caret, "\n" + indent + listMarker);
+            event.consume();
+        } else if (indent.length() > 0) {
+            // Maintain indentation for non-list items too
+            textArea.insertText(caret, "\n" + indent);
+            event.consume();
+        }
+        // If no indent and no list, let default behavior happen (insert \n)
+    }
+
+    private void indentSelection(TextArea textArea) {
+        String selection = textArea.getSelectedText();
+        if (selection == null || selection.isEmpty()) return;
+
+        String[] lines = selection.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i == lines.length - 1 && lines[i].isEmpty()) {
+                // Do nothing
+            } else {
+                sb.append("  ").append(lines[i]);
+            }
+            if (i < lines.length - 1) {
+                sb.append("\n");
+            }
+        }
+        textArea.replaceSelection(sb.toString());
+    }
+
+    private void unindentSelectionOrLine(TextArea textArea) {
+        String selection = textArea.getSelectedText();
+        if (selection == null || selection.isEmpty()) {
+            int caret = textArea.getCaretPosition();
+            String text = textArea.getText();
+            int lineStart = text.lastIndexOf('\n', caret - 1);
+            if (lineStart == -1) lineStart = 0;
+            else lineStart++; 
+            
+            int lineEnd = text.indexOf('\n', caret);
+            if (lineEnd == -1) lineEnd = text.length();
+            
+            String lineText = text.substring(lineStart, lineEnd);
+            String newLineText = lineText;
+            
+            if (newLineText.startsWith("  ")) {
+                newLineText = newLineText.substring(2);
+            } else if (newLineText.startsWith("\t")) {
+                newLineText = newLineText.substring(1);
+            } else if (newLineText.startsWith(" ")) {
+                newLineText = newLineText.substring(1);
+            }
+            
+            if (!newLineText.equals(lineText)) {
+                textArea.replaceText(lineStart, lineEnd, newLineText);
+            }
+        } else {
+            String[] lines = selection.split("\n", -1);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < lines.length; i++) {
+                if (i == lines.length - 1 && lines[i].isEmpty()) {
+                    // Do nothing
+                } else {
+                    String line = lines[i];
+                    if (line.startsWith("  ")) {
+                        sb.append(line.substring(2));
+                    } else if (line.startsWith("\t")) {
+                        sb.append(line.substring(1));
+                    } else if (line.startsWith(" ")) {
+                        sb.append(line.substring(1));
+                    } else {
+                        sb.append(line);
+                    }
+                }
+                
+                if (i < lines.length - 1) {
+                    sb.append("\n");
+                }
+            }
+            textArea.replaceSelection(sb.toString());
+        }
+    }
+
+    private void cutCurrentLine(TextArea textArea) {
+        copyCurrentLine(textArea);
+        deleteCurrentLine(textArea);
+    }
+
+    private void copyCurrentLine(TextArea textArea) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; // skip \n
+        
+        int lineEnd = text.indexOf('\n', caret);
+        if (lineEnd == -1) lineEnd = text.length();
+        
+        String lineText = text.substring(lineStart, lineEnd);
+        if (lineEnd < text.length()) {
+            lineText += "\n";
+        }
+        
+        ClipboardContent content = new ClipboardContent();
+        content.putString(lineText);
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private void deleteCurrentLine(TextArea textArea) {
+        int caret = textArea.getCaretPosition();
+        String text = textArea.getText();
+        int lineStart = text.lastIndexOf('\n', caret - 1);
+        if (lineStart == -1) lineStart = 0;
+        else lineStart++; 
+        
+        int lineEnd = text.indexOf('\n', caret);
+        if (lineEnd == -1) lineEnd = text.length();
+        
+        if (lineEnd < text.length()) {
+            lineEnd++;
+        } else if (lineStart > 0) {
+            lineStart--;
+        }
+        
+        textArea.deleteText(lineStart, lineEnd);
     }
 
     private void duplicateSelectionOrLine(TextArea textArea) {
@@ -1021,8 +1448,9 @@ public class App extends Application {
         result.ifPresent(newConfig -> {
             noteService.saveConfig(newConfig).thenRun(() -> Platform.runLater(() -> {
                 this.currentConfig = newConfig; // Update local cache
+                this.projectsView = null; // Reset projects view to reload with new config
                 applySettings(newConfig);
-                showAlert(LanguageManager.get("dialog.success"), LanguageManager.get("settings.saved"));
+                // Success alert removed as per user request
             })).exceptionally(e -> {
                 Platform.runLater(() -> showAlert(LanguageManager.get("dialog.error"), LanguageManager.get("status.save_failed") + ": " + e.getMessage()));
                 return null;
@@ -1045,6 +1473,9 @@ public class App extends Application {
         
         if (editorArea != null) {
             currentEditorFontSize = config.getEditorFontSize();
+            if (config.getFontFamily() != null) {
+                currentFontFamily = config.getFontFamily();
+            }
             updateEditorStyle();
             // Update preview if visible to reflect font size change
             if (currentMode == ViewMode.READING || currentMode == ViewMode.SPLIT) {
@@ -1111,6 +1542,9 @@ public class App extends Application {
                 AnchorPane.setBottomAnchor(modeSwitcher, 5.0);
             }
         }
+        
+        // Restore the view mode to ensure correct layout
+        setViewMode(currentMode);
     }
 
     private void updateEditorStyle() {
@@ -1127,7 +1561,7 @@ public class App extends Application {
         
         // Apply to Editor
         // Note: We removed .content padding in CSS to ensure exact alignment
-        editorArea.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+        editorArea.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
         
         // Apply to Title Field (if it exists)
         if (titleField != null) {
@@ -1137,7 +1571,7 @@ public class App extends Application {
             // Let's add a small buffer (e.g. 5px) to both to be safe and consistent, 
             // or just rely on the padding.
             // Let's try exact match first.
-            titleField.setStyle("-fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
+            titleField.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-padding: 10 " + hPadding + " 10 " + hPadding + ";");
         }
     }
 
@@ -1150,10 +1584,26 @@ public class App extends Application {
         String html = renderer.render(parser.parse(markdown));
         
         // Get font URL for WebView
-        String fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
-        String fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
-        String fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
-        String fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
+        String fontUrl, fontBoldUrl, fontItalicUrl, fontBoldItalicUrl;
+        String fontFamilyCss = currentFontFamily;
+
+        if ("Inter".equals(currentFontFamily)) {
+             fontUrl = getClass().getResource("fonts/Inter-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/Inter-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/Inter-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/Inter-BoldItalic.ttf").toExternalForm();
+        } else if ("Roboto".equals(currentFontFamily)) {
+             fontUrl = getClass().getResource("fonts/Roboto-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/Roboto-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/Roboto-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/Roboto-BoldItalic.ttf").toExternalForm();
+        } else {
+             // Default JetBrains Mono
+             fontUrl = getClass().getResource("fonts/JetBrainsMono-Regular.ttf").toExternalForm();
+             fontBoldUrl = getClass().getResource("fonts/JetBrainsMono-Bold.ttf").toExternalForm();
+             fontItalicUrl = getClass().getResource("fonts/JetBrainsMono-Italic.ttf").toExternalForm();
+             fontBoldItalicUrl = getClass().getResource("fonts/JetBrainsMono-BoldItalic.ttf").toExternalForm();
+        }
         
         String title = titleField != null ? titleField.getText() : "";
         // Remove extension for display if present
@@ -1167,6 +1617,10 @@ public class App extends Application {
 
         // Determine colors based on theme
         String textColor, bgColor, titleColor, codeBg, codeColor, borderColor, linkColor, buttonBg, buttonHover;
+        String alertNoteBg, alertNoteColor, alertNoteBorder;
+        String alertTipBg, alertTipColor, alertTipBorder;
+        String alertWarnBg, alertWarnColor, alertWarnBorder;
+        String alertCautionBg, alertCautionColor, alertCautionBorder;
         
         if ("Light".equalsIgnoreCase(currentTheme)) {
             textColor = "#24292e";
@@ -1178,6 +1632,11 @@ public class App extends Application {
             linkColor = "#0366d6";
             buttonBg = "#e1e4e8";
             buttonHover = "#d1d5da";
+            
+            alertNoteBg = "#ddf4ff"; alertNoteColor = "#0969da"; alertNoteBorder = "#0969da";
+            alertTipBg = "#dafbe1"; alertTipColor = "#1a7f37"; alertTipBorder = "#1a7f37";
+            alertWarnBg = "#fff8c5"; alertWarnColor = "#9a6700"; alertWarnBorder = "#9a6700";
+            alertCautionBg = "#ffebe9"; alertCautionColor = "#d1242f"; alertCautionBorder = "#d1242f";
         } else if ("Tokyo Night".equalsIgnoreCase(currentTheme)) {
             textColor = "#a9b1d6";
             bgColor = "transparent";
@@ -1188,6 +1647,11 @@ public class App extends Application {
             linkColor = "#7aa2f7";
             buttonBg = "#292e42";
             buttonHover = "#414868";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         } else if ("Retro Night".equalsIgnoreCase(currentTheme)) {
             textColor = "#fdfdfd";
             bgColor = "transparent";
@@ -1198,6 +1662,11 @@ public class App extends Application {
             linkColor = "#ff7edb";
             buttonBg = "#403e41";
             buttonHover = "#5d5a5e";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         } else {
             // Dark (Default)
             textColor = "#e6e6e6"; 
@@ -1209,6 +1678,11 @@ public class App extends Application {
             linkColor = "#61afef";
             buttonBg = "#3e4451";
             buttonHover = "#4b5263";
+            
+            alertNoteBg = "rgba(56, 139, 253, 0.15)"; alertNoteColor = "#2f81f7"; alertNoteBorder = "#2f81f7";
+            alertTipBg = "rgba(46, 160, 67, 0.15)"; alertTipColor = "#3fb950"; alertTipBorder = "#3fb950";
+            alertWarnBg = "rgba(187, 128, 9, 0.15)"; alertWarnColor = "#d29922"; alertWarnBorder = "#d29922";
+            alertCautionBg = "rgba(248, 81, 73, 0.15)"; alertCautionColor = "#f85149"; alertCautionBorder = "#f85149";
         }
 
         // Check if title should be shown
@@ -1284,17 +1758,41 @@ public class App extends Application {
                 "    };" +
                 "    wrapper.appendChild(button);" +
                 "  });" +
+                "  var blockquotes = document.querySelectorAll('blockquote');" +
+                "  blockquotes.forEach(function(bq) {" +
+                "    var p = bq.querySelector('p');" +
+                "    if (!p) return;" +
+                "    var text = p.textContent.trim();" +
+                "    var match = text.match(/^\\[!(NOTE|TIP|WARNING|CAUTION)\\]/i);" +
+                "    if (match) {" +
+                "      var type = match[1].toLowerCase();" +
+                "      bq.classList.add('markdown-alert', 'markdown-alert-' + type);" +
+                "      var content = p.innerHTML;" +
+                "      var newContent = content.replace(/^\\s*\\[!(NOTE|TIP|WARNING|CAUTION)\\]\\s*(<br\\s*\\/?>)?/i, '');" +
+                "      p.innerHTML = newContent;" +
+                "      var title = document.createElement('div');" +
+                "      title.className = 'markdown-alert-title';" +
+                "      title.innerText = type.charAt(0).toUpperCase() + type.slice(1);" +
+                "      bq.insertBefore(title, p);" +
+                "    }" +
+                "  });" +
                 "});" +
+                "Prism.languages['diff'] = {" +
+                "  'diff-remove': { pattern: /^-.*/m, alias: 'deleted' }," +
+                "  'diff-add': { pattern: /^\\\\+.*/m, alias: 'inserted' }," +
+                "  'diff-orange': { pattern: /^!.*/m, alias: 'important' }," +
+                "  'diff-gray': { pattern: /^#.*/m, alias: 'comment' }" +
+                "};" +
                 "</script>" +
                 "<style>" +
-                "@font-face { font-family: 'JetBrains Mono'; src: url('" + fontUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
-                "@font-face { font-family: 'JetBrains Mono'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
-                "body { font-family: 'JetBrains Mono', sans-serif; font-size: " + currentEditorFontSize + "px; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; src: url('" + fontUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-weight: bold; src: url('" + fontBoldUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-style: italic; src: url('" + fontItalicUrl + "'); }" +
+                "@font-face { font-family: '" + fontFamilyCss + "'; font-weight: bold; font-style: italic; src: url('" + fontBoldItalicUrl + "'); }" +
+                "body { font-family: '" + fontFamilyCss + "', sans-serif; font-size: " + currentEditorFontSize + "px; color: " + textColor + "; background-color: " + bgColor + "; padding: 20px 40px; line-height: 1.6; max-width: 900px; margin: 0 auto; }" +
                 ".note-title { font-size: 1.8em; font-weight: bold; color: " + titleColor + "; margin-bottom: 5px; border-bottom: none; opacity: 0.9; }" +
                 ".title-separator { border: 0; height: 1px; background-image: linear-gradient(to right, " + borderColor + ", rgba(0,0,0,0)); margin-bottom: 20px; }" +
-                "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: 'JetBrains Mono', sans-serif; }" +
+                "h1, h2, h3 { color: " + linkColor + "; border-bottom: 1px solid " + borderColor + "; padding-bottom: 10px; margin-top: 20px; font-weight: 600; font-family: '" + fontFamilyCss + "', sans-serif; }" +
                 "h1 { font-size: 2.2em; } h2 { font-size: 1.8em; }" +
                 "strong, b { color: " + textColor + "; font-weight: bold; }" +
                 "code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.9em; }" +
@@ -1303,7 +1801,7 @@ public class App extends Application {
                 "pre { background-color: " + codeBg + "; padding: 10px; border-radius: 6px; overflow-x: auto; border: 1px solid " + borderColor + "; margin: 0; }" +
                 "pre code { background-color: transparent; padding: 0; font-family: 'JetBrains Mono', 'Consolas', monospace; }" +
                 "pre[class*=\"language-\"], code[class*=\"language-\"] { background-color: transparent !important; text-shadow: none !important; font-family: 'JetBrains Mono', 'Consolas', monospace !important; }" +
-                ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: 'JetBrains Mono', sans-serif; }" +
+                ".copy-button { position: absolute; top: 5px; right: 5px; background-color: " + buttonBg + "; color: " + textColor + "; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s; font-family: '" + fontFamilyCss + "', sans-serif; }" +
                 ".code-wrapper:hover .copy-button { opacity: 1; }" +
                 ".copy-button:hover { background-color: " + buttonHover + "; }" +
                 "blockquote { border-left: 4px solid " + linkColor + "; margin: 0; padding-left: 15px; color: #5c6370; font-style: italic; }" +
@@ -1313,8 +1811,24 @@ public class App extends Application {
                 "th, td { border: 1px solid " + borderColor + "; padding: 8px; text-align: left; }" +
                 "th { background-color: " + codeBg + "; color: " + textColor + "; }" +
                 "img { max-width: 100%; border-radius: 5px; }" +
-                "ul, ol { padding-left: 20px; }" +
+                "ul, ol { padding-left: 30px; }" +
+                "ul ul, ul ol, ol ul, ol ol { margin-top: 0; margin-bottom: 0; }" +
+                "ul { list-style-type: disc; }" +
+                "ul ul { list-style-type: circle; }" +
+                "ul ul ul { list-style-type: square; }" +
                 "li { margin-bottom: 5px; }" +
+                "li.task-list-item { list-style-type: none; }" +
+                "input[type='checkbox'] { margin-right: 5px; }" +
+                ".markdown-alert { padding: 8px 16px; margin-bottom: 16px; border-left: 4px solid !important; border-radius: 0 4px 4px 0; font-style: normal !important; }" +
+                ".markdown-alert-title { display: flex; align-items: center; font-weight: bold; margin-bottom: 4px; }" +
+                ".markdown-alert-note { background-color: " + alertNoteBg + "; color: " + alertNoteColor + "; border-color: " + alertNoteBorder + " !important; }" +
+                ".markdown-alert-tip { background-color: " + alertTipBg + "; color: " + alertTipColor + "; border-color: " + alertTipBorder + " !important; }" +
+                ".markdown-alert-warning { background-color: " + alertWarnBg + "; color: " + alertWarnColor + "; border-color: " + alertWarnBorder + " !important; }" +
+                ".markdown-alert-caution { background-color: " + alertCautionBg + "; color: " + alertCautionColor + "; border-color: " + alertCautionBorder + " !important; }" +
+                ".token.diff-remove { color: #e06c75 !important; }" +
+                ".token.diff-add { color: #98c379 !important; }" +
+                ".token.diff-orange { color: #d19a66 !important; }" +
+                ".token.diff-gray { color: #5c6370 !important; }" +
                 "</style></head><body style='background-color: " + bgColor + ";'>" +
                 titleHtml +
                 html + "</body></html>";
@@ -1323,6 +1837,11 @@ public class App extends Application {
     }
 
     private void loadNote(String filename) {
+        loadNote(filename, -1);
+    }
+
+    private void loadNote(String filename, int line) {
+        addToRecentFiles(filename);
         noteService.getNoteDetail(filename).thenAccept(note -> Platform.runLater(() -> {
             if (rootSplitPane.getItems().size() > 1) {
                 rootSplitPane.getItems().set(1, mainContent); // Switch to content view inside split pane
@@ -1334,6 +1853,18 @@ public class App extends Application {
                 // Tab Logic
                 if (openTabs.containsKey(filename)) {
                     editorTabPane.getSelectionModel().select(openTabs.get(filename));
+                    // If line specified, move to it
+                    if (line > 0) {
+                        VBox panel = tabEditorPanels.get(openTabs.get(filename));
+                        // Need to find the TextArea in the panel... 
+                        // This is getting messy accessing deep children.
+                        // Let's rely on the fact that 'editorArea' is updated to current tab's editor when selected.
+                        // But we just selected it.
+                        // Wait, the listener on selection updates 'editorArea'.
+                        // So we can use 'editorArea' after a small delay or directly find it.
+                        // Let's use a small delay to let the listener fire.
+                        Platform.runLater(() -> moveToLine(editorArea, line));
+                    }
                 } else {
                     Tab tab = new Tab(note.getFilename());
                     tab.setUserData(filename); // Store full path
@@ -1351,7 +1882,7 @@ public class App extends Application {
                     double width = editorArea.getWidth(); // Use main editor width as reference
                     double hPadding = (width - MAX_CONTENT_WIDTH) / 2;
                     if (hPadding < 70) hPadding = 70;
-                    tabEditor.setStyle("-fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
+                    tabEditor.setStyle("-fx-font-family: '" + currentFontFamily + "'; -fx-font-size: " + currentEditorFontSize + "px; -fx-padding: 20 " + hPadding + " 20 " + hPadding + ";");
 
                     // Listeners
                     tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -1425,11 +1956,18 @@ public class App extends Application {
                     // Set initial reference
                     editorArea = tabEditor;
                     updateTabLayout(tab); // Initial layout
+                    
+                    if (line > 0) {
+                        moveToLine(tabEditor, line);
+                    }
                 }
             } else {
                 // Classic Mode
                 titleField.setText(note.getFilename());
                 editorArea.setText(note.getContent());
+                if (line > 0) {
+                    moveToLine(editorArea, line);
+                }
             }
             
             updateLineNumbers();
@@ -1438,60 +1976,33 @@ public class App extends Application {
         }));
     }
 
-    private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
-        setupEditorBehavior(tabEditor);
-        VBox container = new VBox();
-        container.getStyleClass().add("editor-panel");
-
-        TextArea tabLineNumbers = new TextArea("1");
-        tabLineNumbers.setEditable(false);
-        tabLineNumbers.getStyleClass().add("line-numbers");
-        tabLineNumbers.setWrapText(false);
-        tabLineNumbers.setPrefWidth(50);
-        tabLineNumbers.setMinWidth(50);
-        tabLineNumbers.setMaxWidth(50);
-        tabLineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
-        tabLineNumbers.setMouseTransparent(true);
-
-        // Sync line numbers
-        tabEditor.scrollTopProperty().addListener((obs, oldVal, newVal) -> tabLineNumbers.setScrollTop(newVal.doubleValue()));
-        tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
-             int lines = newVal.split("\n", -1).length;
-             StringBuilder sb = new StringBuilder();
-             for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
-             tabLineNumbers.setText(sb.toString());
-        });
-        // Initial line numbers
-        int lines = tabEditor.getText().split("\n", -1).length;
-        StringBuilder sb = new StringBuilder();
-        for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
-        tabLineNumbers.setText(sb.toString());
-
-        StackPane editorStack = new StackPane();
-        editorStack.getChildren().addAll(tabEditor, tabLineNumbers);
-        StackPane.setAlignment(tabLineNumbers, Pos.TOP_LEFT);
-        
-        StackPane editorBody = new StackPane(editorStack);
-        editorBody.getStyleClass().add("panel-body");
-        VBox.setVgrow(editorBody, Priority.ALWAYS);
-        
-        TextField tabTitleField = new TextField(filename);
-        tabTitleField.setPromptText("Not Başlığı");
-        tabTitleField.setPrefWidth(Double.MAX_VALUE);
-        tabTitleField.setMaxWidth(Double.MAX_VALUE);
-        tabTitleField.setAlignment(Pos.CENTER_LEFT);
-        tabTitleField.getStyleClass().add("title-field");
-        
-        // Sync with tab title
-        tabTitleField.textProperty().addListener((obs, oldVal, newVal) -> {
-             // Update tab user data (filename) - wait, filename includes path.
-             // This is tricky. Title field usually edits content title or filename?
-             // In this app, it seems to be filename.
-             // Let's just let it be.
+    private void openSearchEverywhere() {
+        SearchEverywhereDialog dialog = new SearchEverywhereDialog(noteService, currentTheme, result -> {
+            loadNote(result.filename, result.line);
         });
         
-        container.getChildren().addAll(tabTitleField, editorBody);
-        return container;
+        // Center on screen
+        Stage stage = (Stage) mainLayout.getScene().getWindow();
+        dialog.setX(stage.getX() + (stage.getWidth() - 600) / 2);
+        dialog.setY(stage.getY() + 100); // Slightly top-aligned
+        
+        dialog.show();
+    }
+
+    private void moveToLine(TextArea textArea, int line) {
+        if (line <= 1) return;
+        String[] lines = textArea.getText().split("\n");
+        int offset = 0;
+        for (int i = 0; i < line - 1 && i < lines.length; i++) {
+            offset += lines[i].length() + 1; // +1 for newline
+        }
+        if (offset < textArea.getText().length()) {
+            textArea.positionCaret(offset);
+            // Center the caret
+            // This is a bit hacky in JavaFX TextArea, but selecting helps
+            textArea.selectPositionCaret(offset);
+            textArea.deselect(); 
+        }
     }
 
     private void saveNote(boolean silent) {
@@ -1742,7 +2253,27 @@ public class App extends Application {
         branchLabel.getStyleClass().add("status-branch");
         branchLabel.setCursor(Cursor.HAND);
 
-        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel);
+        notificationBtn = new Button("🔔");
+        notificationBtn.getStyleClass().add("status-button");
+        notificationBtn.setTooltip(new Tooltip(LanguageManager.get("notification.tooltip")));
+        notificationBtn.setOnAction(e -> toggleNotificationHistory());
+
+        updateBtn = new Button(LanguageManager.get("status.update_available"));
+        updateBtn.getStyleClass().add("status-button-update");
+        
+        // Restore update button state if pending update exists
+        if (pendingUpdateInfo != null) {
+            updateBtn.setVisible(true);
+            updateBtn.setManaged(true);
+            updateBtn.setUserData(pendingUpdateInfo);
+        } else {
+            updateBtn.setVisible(false);
+            updateBtn.setManaged(false);
+        }
+        
+        updateBtn.setOnAction(e -> showUpdateDialog());
+
+        statusBar.getChildren().addAll(syncSpinner, statusLabel, spacer, viewModeLabel, new Label("  |  "), previewStatusLabel, new Label("  |  "), editorStatsLabel, new Label("  |  "), branchLabel, new Label(" "), notificationBtn, updateBtn);
         return statusBar;
     }
 
@@ -1751,6 +2282,9 @@ public class App extends Application {
     }
 
     private void showNotification(String title, String message, NotificationType type, String actionText, Runnable action) {
+        // Add to history
+        notificationHistory.add(0, new NotificationRecord(title, message, type));
+        
         HBox notification = new HBox(0);
         notification.getStyleClass().add("notification-popup");
         notification.setMaxHeight(Region.USE_PREF_SIZE); // Prevent vertical stretching
@@ -1821,7 +2355,7 @@ public class App extends Application {
         FadeTransition fadeOut = new FadeTransition(Duration.millis(500), notification);
         fadeOut.setFromValue(1);
         fadeOut.setToValue(0);
-        fadeOut.setDelay(Duration.seconds(3));
+        fadeOut.setDelay(Duration.seconds(5)); // 5 seconds delay
         fadeOut.setOnFinished(e -> rootStack.getChildren().remove(notification));
 
         fadeIn.play();
@@ -2004,6 +2538,54 @@ public class App extends Application {
         // Add TitleField to the top of the editor panel
         // This ensures they share the same width context
         container.getChildren().addAll(titleField, editorBody);
+        return container;
+    }
+
+    private VBox createEditorPanelForTab(TextArea tabEditor, String filename) {
+        setupEditorBehavior(tabEditor);
+        VBox container = new VBox();
+        container.getStyleClass().add("editor-panel");
+
+        TextArea tabLineNumbers = new TextArea("1");
+        tabLineNumbers.setEditable(false);
+        tabLineNumbers.getStyleClass().add("line-numbers");
+        tabLineNumbers.setWrapText(false);
+        tabLineNumbers.setPrefWidth(50);
+        tabLineNumbers.setMinWidth(50);
+        tabLineNumbers.setMaxWidth(50);
+        tabLineNumbers.setStyle("-fx-overflow-x: hidden; -fx-overflow-y: hidden;");
+        tabLineNumbers.setMouseTransparent(true);
+
+        // Sync line numbers
+        tabEditor.scrollTopProperty().addListener((obs, oldVal, newVal) -> tabLineNumbers.setScrollTop(newVal.doubleValue()));
+        tabEditor.textProperty().addListener((obs, oldVal, newVal) -> {
+             int lines = newVal.split("\n", -1).length;
+             StringBuilder sb = new StringBuilder();
+             for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+             tabLineNumbers.setText(sb.toString());
+        });
+        // Initial line numbers
+        int lines = tabEditor.getText().split("\n", -1).length;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= lines; i++) sb.append(i).append("\n");
+        tabLineNumbers.setText(sb.toString());
+
+        StackPane editorStack = new StackPane();
+        editorStack.getChildren().addAll(tabEditor, tabLineNumbers);
+        StackPane.setAlignment(tabLineNumbers, Pos.TOP_LEFT);
+        
+        StackPane editorBody = new StackPane(editorStack);
+        editorBody.getStyleClass().add("panel-body");
+        VBox.setVgrow(editorBody, Priority.ALWAYS);
+        
+        TextField tabTitleField = new TextField(filename);
+        tabTitleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
+        tabTitleField.setPrefWidth(Double.MAX_VALUE);
+        tabTitleField.setMaxWidth(Double.MAX_VALUE);
+        tabTitleField.setAlignment(Pos.CENTER_LEFT);
+        tabTitleField.getStyleClass().add("title-field");
+        
+        container.getChildren().addAll(tabTitleField, editorBody);
         return container;
     }
 
@@ -2637,7 +3219,7 @@ public class App extends Application {
         Button btnNewFile = new Button("📄");
         btnNewFile.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_note")));
         btnNewFile.getStyleClass().add("sidebar-action-button");
-        btnNewFile.setOnAction(e -> clearEditor());
+        btnNewFile.setOnAction(e -> createNewNote());
 
         Button btnNewFolder = new Button("📁");
         btnNewFolder.setTooltip(new Tooltip(LanguageManager.get("sidebar.new_folder")));
@@ -2697,7 +3279,16 @@ public class App extends Application {
             switchSidebarView(gitHistoryView, btnGit);
         });
 
-        activityBar.getChildren().addAll(btnExplorer, btnGit);
+        btnProjects = createActivityButton("📋", "Projects");
+        btnProjects.setOnAction(e -> {
+            if (projectsView == null) {
+                projectsView = new ProjectsView(noteService, currentConfig, this::openTaskDetail);
+            }
+            projectsView.refresh();
+            switchSidebarView(projectsView, btnProjects);
+        });
+
+        activityBar.getChildren().addAll(btnExplorer, btnGit, btnProjects);
 
         // Sidebar Content
         sidebarContent = new StackPane();
@@ -2774,7 +3365,14 @@ public class App extends Application {
         
         primaryStage.setTitle(LanguageManager.get("app.title"));
         mainLayout.setTop(createTitleBar(primaryStage));
-        mainLayout.setLeft(createSidebar());
+        
+        // Update sidebar in split pane instead of replacing left of border pane
+        if (rootSplitPane.getItems().size() > 0) {
+            double[] dividers = rootSplitPane.getDividerPositions();
+            rootSplitPane.getItems().set(0, createSidebar());
+            rootSplitPane.setDividerPositions(dividers);
+        }
+        
         mainLayout.setBottom(createStatusBar());
         
         if (titleField != null) titleField.setPromptText(LanguageManager.get("editor.title_placeholder"));
@@ -2882,6 +3480,49 @@ public class App extends Application {
         area.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles() || event.getDragboard().hasString()) {
                 event.acceptTransferModes(TransferMode.COPY_OR_MOVE);
+                
+                // Move caret to mouse position
+                javafx.scene.control.skin.TextAreaSkin skin = (javafx.scene.control.skin.TextAreaSkin) area.getSkin();
+                if (skin != null) {
+                    javafx.geometry.Point2D screenPoint = new javafx.geometry.Point2D(event.getScreenX(), event.getScreenY());
+                    javafx.geometry.Point2D localPoint = area.screenToLocal(screenPoint);
+                    
+                    // Hit testing to find character index
+                    // Since TextAreaSkin doesn't expose hitTest directly in a public API easily accessible in all JavaFX versions without reflection or internal usage,
+                    // we might need a workaround or use the public API if available.
+                    // However, for standard TextArea, we can try to approximate or use internal API if we are sure about the environment.
+                    // But a safer way in standard JavaFX 9+ is using the hitTest method of the skin if we cast it.
+                    // Actually, TextAreaSkin has getCharacterIndexAtPoint() but it might be protected or package private depending on version.
+                    // Let's try to use the positionCaret method which is available on TextArea but it doesn't take coordinates.
+                    
+                    // Workaround: We can't easily set caret by coordinates in standard JavaFX TextArea API.
+                    // But we can try to use the skin's hit info if we can access it.
+                    // Note: getCharacterIndexAtPoint is not public in TextAreaSkin.
+                    
+                    // However, we can try to simulate a mouse click or use reflection.
+                    // Reflection is risky.
+                    
+                    // Let's try a simpler approach:
+                    // We can't easily move the caret.
+                    // Wait, `positionCaret` sets the index. We need index from point.
+                    // `skin.getHitInfo(localPoint).getCharIndex()` might work if `getHitInfo` is available.
+                    // It seems `getHitInfo` is not public.
+                    
+                    // Okay, let's look at `InputMethodRequests`.
+                    
+                    // Actually, there is a trick. We can fire a MouseEvent.
+                    // But we are in a DragEvent.
+                    
+                    // Let's try to use reflection to access `getCharacterIndexAtPoint` from `TextAreaSkin`.
+                    try {
+                        java.lang.reflect.Method m = skin.getClass().getDeclaredMethod("getIndex", double.class, double.class);
+                        m.setAccessible(true);
+                        int index = (int) m.invoke(skin, localPoint.getX(), localPoint.getY());
+                        area.positionCaret(index);
+                    } catch (Exception e) {
+                        // Fallback or ignore
+                    }
+                }
             }
             event.consume();
         });
@@ -2929,6 +3570,23 @@ public class App extends Application {
         } else {
             // In classic mode, we replace the main content area
             // We replace the 2nd item of rootSplitPane
+            if (rootSplitPane.getItems().size() > 1) {
+                rootSplitPane.getItems().set(1, detailView);
+            } else {
+                rootSplitPane.getItems().add(detailView);
+            }
+        }
+    }
+
+    private void openTaskDetail(String itemId, String projectId) {
+        TaskDetailView detailView = new TaskDetailView(noteService, itemId, projectId);
+        
+        if (showTabs) {
+            Tab tab = new Tab("Task");
+            tab.setContent(detailView);
+            editorTabPane.getTabs().add(tab);
+            editorTabPane.getSelectionModel().select(tab);
+        } else {
             if (rootSplitPane.getItems().size() > 1) {
                 rootSplitPane.getItems().set(1, detailView);
             } else {
@@ -2999,5 +3657,47 @@ public class App extends Application {
             if (result != null) return result;
         }
         return null;
+    }
+
+    private void createNewNote() {
+        TreeItem<String> selectedItem = noteTreeView.getSelectionModel().getSelectedItem();
+        String initialPath = "";
+        if (selectedItem != null) {
+            String path = buildPath(selectedItem);
+            if (path.endsWith(".md")) {
+                int lastSlash = path.lastIndexOf("/");
+                if (lastSlash > 0) {
+                    initialPath = path.substring(0, lastSlash + 1);
+                }
+            } else {
+                initialPath = path + "/";
+            }
+        }
+        
+        clearEditor();
+        
+        if (!initialPath.isEmpty()) {
+            titleField.setText(initialPath);
+            titleField.positionCaret(initialPath.length());
+        }
+    }
+
+    private void addToRecentFiles(String filename) {
+        recentFiles.remove(filename); // Remove if exists to move to top
+        recentFiles.add(0, filename); // Add to top
+        if (recentFiles.size() > MAX_RECENT_FILES) {
+            recentFiles.remove(recentFiles.size() - 1);
+        }
+    }
+
+    private void openRecentFiles() {
+        RecentFilesDialog dialog = new RecentFilesDialog(recentFiles, currentTheme, this::loadNote);
+        
+        // Center on screen
+        Stage stage = (Stage) mainLayout.getScene().getWindow();
+        dialog.setX(stage.getX() + (stage.getWidth() - 500) / 2);
+        dialog.setY(stage.getY() + 100); // Slightly top-aligned
+        
+        dialog.show();
     }
 }

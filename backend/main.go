@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -77,6 +78,16 @@ type GithubTokenResponse struct {
 	ErrorDesc   string `json:"error_description"`
 }
 
+type SearchRequest struct {
+	Query string `json:"query"`
+}
+
+type SearchResult struct {
+	Filename string `json:"filename"`
+	Line     int    `json:"line"`
+	Context  string `json:"context"`
+}
+
 func main() {
 	// Setup logging
 	logFile, err := os.OpenFile("backend.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -125,9 +136,56 @@ func main() {
 	http.HandleFunc("/api/git/log", loggingMiddleware(handleGitLog))                // GET (git log)
 	http.HandleFunc("/api/git/commit/", loggingMiddleware(handleGitCommitDetail))   // GET (commit details)
 	http.HandleFunc("/api/git/diff", loggingMiddleware(handleGitDiff))              // GET (file diff)
+	http.HandleFunc("/api/github/graphql", loggingMiddleware(handleGithubGraphQL))  // POST (GraphQL proxy)
+	http.HandleFunc("/api/search", loggingMiddleware(handleSearch))                 // POST (search notes)
 
 	log.Printf("Backend servisi %s portunda çalışıyor...", port)
 	log.Fatal(http.ListenAndServe(port, nil))
+}
+
+func handleGithubGraphQL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if config.Token == "" {
+		http.Error(w, "GitHub token not found", http.StatusUnauthorized)
+		return
+	}
+
+	// Read the body (GraphQL query)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Error reading body", http.StatusBadRequest)
+		return
+	}
+
+	// Forward to GitHub
+	req, err := http.NewRequest("POST", "https://api.github.com/graphql", bytes.NewBuffer(body))
+	if err != nil {
+		http.Error(w, "Error creating request", http.StatusInternalServerError)
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+config.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Error sending request to GitHub", http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Return GitHub's response
+	respBody, _ := ioutil.ReadAll(resp.Body)
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -590,7 +648,7 @@ func handleGithubAuthStart(w http.ResponseWriter, r *http.Request) {
 	// GitHub Device Flow başlat
 	data := url.Values{}
 	data.Set("client_id", githubClientID)
-	data.Set("scope", "repo") // Repo erişimi için scope
+	data.Set("scope", "repo project") // Repo ve Project erişimi için scope
 
 	req, err := http.NewRequest("POST", "https://github.com/login/device/code", strings.NewReader(data.Encode()))
 	if err != nil {
@@ -1083,4 +1141,96 @@ func handleGitDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte(output))
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	query := strings.ToLower(req.Query)
+	if query == "" {
+		json.NewEncoder(w).Encode([]SearchResult{})
+		return
+	}
+
+	var results []SearchResult
+	var muResults sync.Mutex
+	var wg sync.WaitGroup
+
+	// Walk through notes directory
+	err := filepath.Walk(notesDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if strings.HasPrefix(info.Name(), ".") && info.Name() != "." {
+				return filepath.SkipDir // Skip hidden dirs like .git
+			}
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
+			return nil
+		}
+
+		wg.Add(1)
+		go func(filePath string) {
+			defer wg.Done()
+
+			content, err := ioutil.ReadFile(filePath)
+			if err != nil {
+				return
+			}
+
+			lines := strings.Split(string(content), "\n")
+			for i, line := range lines {
+				if strings.Contains(strings.ToLower(line), query) {
+					relPath, _ := filepath.Rel(notesDir, filePath)
+
+					// Create context snippet
+					context := strings.TrimSpace(line)
+					if len(context) > 100 {
+						idx := strings.Index(strings.ToLower(context), query)
+						start := idx - 20
+						if start < 0 {
+							start = 0
+						}
+						end := idx + len(query) + 50
+						if end > len(context) {
+							end = len(context)
+						}
+						context = "..." + context[start:end] + "..."
+					}
+
+					muResults.Lock()
+					results = append(results, SearchResult{
+						Filename: filepath.ToSlash(relPath),
+						Line:     i + 1,
+						Context:  context,
+					})
+					muResults.Unlock()
+				}
+			}
+		}(path)
+
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	wg.Wait()
+	json.NewEncoder(w).Encode(results)
 }

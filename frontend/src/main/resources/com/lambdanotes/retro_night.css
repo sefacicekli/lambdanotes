@@ -485,12 +485,80 @@
     -fx-effect: dropshadow(gaussian, #ff7edb, 3, 0, 0, 0);
 }
 
+/* Status Bar Buttons */
+.status-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #00e8f8;
+    -fx-font-size: 14px;
+    -fx-padding: 0 5px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 3px;
+}
+
+.status-button:hover {
+    -fx-text-fill: #ff7edb;
+    -fx-background-color: rgba(255, 126, 219, 0.1);
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
+}
+
+.status-button-update {
+    -fx-background-color: #ff2a6d;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-padding: 1px 6px;
+    -fx-cursor: hand;
+    -fx-border-width: 0;
+    -fx-background-radius: 10px;
+    -fx-effect: dropshadow(gaussian, #ff2a6d, 5, 0, 0, 0);
+}
+
+.status-button-update:hover {
+    -fx-background-color: #ff5c8d;
+}
+
+/* Notification History Panel */
+.notification-history-panel {
+    -fx-background-color: #2b213a;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 15, 0, 0, 0);
+    -fx-background-radius: 6px;
+    -fx-border-color: #ff7edb;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+}
+
+.notification-history-item {
+    -fx-background-color: #241b31;
+    -fx-background-radius: 4px;
+    -fx-border-color: #00e8f8;
+    -fx-border-width: 1px;
+    -fx-border-radius: 4px;
+}
+
+.small-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #00e8f8;
+    -fx-font-size: 10px;
+    -fx-padding: 2px 5px;
+    -fx-border-color: #00e8f8;
+    -fx-border-radius: 3px;
+    -fx-cursor: hand;
+}
+
+.small-button:hover {
+    -fx-background-color: rgba(0, 232, 248, 0.2);
+    -fx-text-fill: #ff7edb;
+    -fx-border-color: #ff7edb;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
+}
+
 /* Notifications */
 .notification-popup {
-    -fx-background-color: #241b31;
+    -fx-background-color: #2b213a;
     -fx-background-radius: 5px;
     -fx-border-radius: 5px;
-    -fx-effect: dropshadow(gaussian, #ff7edb, 15, 0, 0, 5);
+    -fx-effect: dropshadow(gaussian, #ff7edb, 10, 0, 0, 0);
     -fx-padding: 0;
     -fx-min-width: 250px;
     -fx-max-width: 300px;
@@ -506,8 +574,8 @@
 }
 
 .notification-accent-info { -fx-background-color: #00e8f8; }
-.notification-accent-success { -fx-background-color: #ff7edb; }
-.notification-accent-warning { -fx-background-color: #f9c74f; }
+.notification-accent-success { -fx-background-color: #00e8f8; }
+.notification-accent-warning { -fx-background-color: #ff7edb; }
 .notification-accent-error { -fx-background-color: #ff2a6d; }
 
 .notification-content {
@@ -524,10 +592,11 @@
     -fx-text-fill: #ff7edb;
     -fx-font-weight: bold;
     -fx-font-size: 12px;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 2, 0, 0, 0);
 }
 
 .notification-message {
-    -fx-text-fill: #fdfdfd;
+    -fx-text-fill: #00e8f8;
     -fx-font-size: 12px;
     -fx-wrap-text: true;
 }
@@ -542,8 +611,9 @@
 
 .notification-close-button:hover {
     -fx-text-fill: #ff7edb;
-    -fx-background-color: rgba(255, 126, 219, 0.1);
+    -fx-background-color: rgba(255, 126, 219, 0.2);
     -fx-background-radius: 3px;
+    -fx-effect: dropshadow(gaussian, #ff7edb, 5, 0, 0, 0);
 }
 
 .notification-action-link {
@@ -556,23 +626,5 @@
 
 .notification-action-link:hover {
     -fx-underline: true;
-    -fx-text-fill: #ff7edb;
-}
-
-.line-numbers {
-    -fx-background-color: transparent;
-    -fx-text-fill: #00e8f8;
-    -fx-font-family: "JetBrains Mono", "Roboto Mono", "Consolas", monospace;
-    -fx-font-size: 16px;
-    -fx-padding: 20 5 20 0;
-    -fx-alignment: TOP-RIGHT;
-    -fx-border-color: #ff7edb;
-    -fx-border-width: 0 1px 0 0;
-    -fx-control-inner-background: transparent;
-    -fx-effect: dropshadow(gaussian, #00e8f8, 2, 0, 0, 0);
-}
-
-.line-numbers .content {
-    -fx-background-color: transparent;
-    -fx-alignment: TOP-RIGHT;
+    -fx-effect: dropshadow(gaussian, #00e8f8, 5, 0, 0, 0);
 }

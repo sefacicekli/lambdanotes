@@ -6,6 +6,7 @@ public class AppConfig {
     private String username;
     private String email;
     private int editorFontSize = 14; // Default font size
+    private String fontFamily = "JetBrains Mono"; // Default font family
     private boolean showLineNumbers = true; // Default show line numbers
     private String theme = "Dark"; // Default theme
     private boolean showTabs = false; // Default show tabs
@@ -31,6 +32,9 @@ public class AppConfig {
 
     public int getEditorFontSize() { return editorFontSize; }
     public void setEditorFontSize(int editorFontSize) { this.editorFontSize = editorFontSize; }
+
+    public String getFontFamily() { return fontFamily; }
+    public void setFontFamily(String fontFamily) { this.fontFamily = fontFamily; }
 
     public boolean isShowLineNumbers() { return showLineNumbers; }
     public void setShowLineNumbers(boolean showLineNumbers) { this.showLineNumbers = showLineNumbers; }
